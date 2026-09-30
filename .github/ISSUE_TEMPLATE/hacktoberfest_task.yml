@@ -1,0 +1,39 @@
+name: 🎃 Hacktoberfest Task
+description: Propose or claim a task for Hacktoberfest 2026
+title: "[Hacktoberfest] "
+labels: ["hacktoberfest", "help wanted"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for contributing to **SEO-Magus** during Hacktoberfest!
+        Please review our [Contributing Guidelines](https://github.com/YOUR_USERNAME/SEO-magus/blob/main/CONTRIBUTING.md) before submitting.
+
+  - type: dropdown
+    id: difficulty
+    attributes:
+      label: Difficulty Level
+      options:
+        - "Beginner (Good First Issue)"
+        - "Intermediate"
+        - "Advanced"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Task Description
+      description: What feature, benchmark, or connector are you proposing or claiming?
+      placeholder: Describe the task in detail...
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria & Tests
+      description: How will this task be tested and verified?
+      placeholder: "- Unit tests added in tests/\n- Passes python -m unittest discover tests"
+    validations:
+      required: true

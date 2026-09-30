@@ -1,0 +1,1 @@
+"""SEO-Magus Test Suite."""

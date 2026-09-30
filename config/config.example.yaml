@@ -1,0 +1,29 @@
+# SEO-Magus Configuration
+
+site:
+  base_url: "https://example.com"
+  sitemap_url: "https://example.com/sitemap.xml"
+  target_country: "USA"
+  target_device: "DESKTOP"
+
+api_keys:
+  typesafe_api_key: "YOUR_TYPESAFE_API_KEY"
+  openai_api_key: "YOUR_OPENAI_API_KEY"
+  gemini_api_key: "YOUR_GEMINI_API_KEY"
+  anthropic_api_key: "YOUR_ANTHROPIC_API_KEY"
+
+thresholds:
+  jev_noul_min_confidence: 0.85
+  jev_score_min: 7.0
+  page2_min_position: 11.0
+  page2_max_position: 20.0
+  min_impressions: 100
+
+taxonomy:
+  pillars:
+    - "/guides/email-marketing-mastery"
+    - "/guides/domain-authentication"
+  money_pages:
+    - "/pricing"
+    - "/features/automation"
+    - "/features/segmentation"
