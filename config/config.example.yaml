@@ -6,11 +6,30 @@ site:
   target_country: "USA"
   target_device: "DESKTOP"
 
+# AI Model Configuration
+# -------------------------------------------------------------
+# Tier 1: Zero-Config / Offline Simulation (Default)
+#   Leave api_keys empty. Built-in fast heuristics evaluate links
+#   and deterministic regex extracts anchors. 100% Free, zero setup.
+#
+# Tier 2: Free Local AI (Ollama)
+#   Run open-weight models (Llama 3.2, Mistral, Qwen) completely offline:
+#   system1_provider: "ollama"  # Requires Ollama running on localhost:11434
+#   ollama_model: "llama3.2:3b"
+#
+# Tier 3: Production Cloud APIs
+#   Ultra-fast sub-second System 1 classification with TypeSafe Jev,
+#   paired with Gemini (Free tier in Google AI Studio) or OpenAI/Claude.
+# -------------------------------------------------------------
+model_providers:
+  system1_provider: "auto"     # "auto" (uses Jev if key present, else simulation), "jev", or "ollama"
+  system2_provider: "auto"     # "auto" (uses Gemini/OpenAI if key present, else heuristic engine)
+
 api_keys:
-  typesafe_api_key: "YOUR_TYPESAFE_API_KEY"
-  openai_api_key: "YOUR_OPENAI_API_KEY"
-  gemini_api_key: "YOUR_GEMINI_API_KEY"
-  anthropic_api_key: "YOUR_ANTHROPIC_API_KEY"
+  typesafe_api_key: ""         # Optional: TypeSafe Jev API Key (api.typesafe.ai)
+  gemini_api_key: ""           # Optional: Google AI Studio key (Free tier available)
+  openai_api_key: ""           # Optional: OpenAI API Key
+  anthropic_api_key: ""        # Optional: Anthropic Claude API Key
 
 thresholds:
   jev_noul_min_confidence: 0.85

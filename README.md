@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![Hacktoberfest: 2026](https://img.shields.io/badge/Hacktoberfest-2026-orange.svg)](https://hacktoberfest.com/)
-[![CI](https://github.com/YOUR_USERNAME/SEO-magus/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/SEO-magus/actions)
+[![CI](https://github.com/lucasrafaldini/SEO-magus/actions/workflows/ci.yml/badge.svg)](https://github.com/lucasrafaldini/SEO-magus/actions)
 
 > **Rebuilding internal link maps is a semantic classification and graph optimization problem, not creative writing.**
 >
@@ -18,6 +18,31 @@
   1. **TypeSafe Jev (System 1):** Sub-second parallel decision engine evaluates **8,000+ candidate pairs in 45 seconds for ~\$0.21** (~190x cheaper) using typed primitives: `noul` (yes/no), `score` (relevance), and `choice` (clustering).
   2. **Auxiliary Frontier LLMs (System 2 - Gemini / Claude / GPT):** Reserved strictly for high-nuance rewriting, inserting descriptive non-repetitive anchor texts into natural sentences.
   3. **Google Search Console Integration:** Targets high-impression keywords lingering on **SERP Page 2 (Positions 11.0 to 20.0)** to pump link equity where it creates instant rank jumps.
+
+---
+
+## 🤖 AI Models & Accessibility: How Does It Work for Users?
+
+We designed SEO-Magus so **anyone can clone the repo and run it immediately without paying for API keys or setting up credit cards**:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│  Tier 1: Out-of-the-Box Simulation (Zero Keys Required)                │
+│  - Default mode when no API keys are provided.                         │
+│  - Uses built-in heuristic decision engine and regex anchor extractor. │
+│  - 100% Free, offline, instant testing and benchmark verification.    │
+├────────────────────────────────────────────────────────────────────────┤
+│  Tier 2: Free Local AI (Ollama / Llama 3 / Mistral)                   │
+│  - Connects to local Ollama daemon (localhost:11434).                  │
+│  - Zero cloud dependencies, 100% private, no rate limits.              │
+│  - Covered by Hacktoberfest Issue #5.                                  │
+├────────────────────────────────────────────────────────────────────────┤
+│  Tier 3: Production Cloud APIs                                         │
+│  - System 1: TypeSafe Jev (api.typesafe.ai) for sub-second speeds.     │
+│  - System 2: Google Gemini (Free tier in Google AI Studio), OpenAI     │
+│    or Anthropic for conversational sentence rewriting.                 │
+└────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -44,7 +69,7 @@ python3 -m src.cli benchmark --site all
 ### 1. Installation
 Clone the repository:
 ```bash
-git clone https://github.com/YOUR_USERNAME/SEO-magus.git
+git clone https://github.com/lucasrafaldini/SEO-magus.git
 cd SEO-magus
 ```
 
