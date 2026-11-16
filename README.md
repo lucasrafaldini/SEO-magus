@@ -1,125 +1,92 @@
-# 🔮 SEO-Magus: High-Speed SEO Optimization & Internal Linking Suite
+# 🔮 SEO-Magus
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![Hacktoberfest: 2026](https://img.shields.io/badge/Hacktoberfest-2026-orange.svg)](https://hacktoberfest.com/)
-[![CI](https://github.com/lucasrafaldini/SEO-magus/actions/workflows/ci.yml/badge.svg)](https://github.com/lucasrafaldini/SEO-magus/actions)
 
-> **Rebuilding internal link maps is a semantic classification and graph optimization problem, not creative writing.**
->
-> Inspired by **Borja (@borjafat)**, **TypeSafe Jev**, and **Distribb**.
+**Crawl a website, find its technical SEO problems and get ready-to-paste internal links that fix its structure.**
 
----
+SEO-Magus crawls your site, audits it (orphan pages, buried pages, broken links, redirect chains, titles, canonicals…),
+then proposes contextual internal links: for every pair of pages a fast classifier decides whether the source paragraph
+gives readers a real reason to click, and the exact sentence is rewritten with a descriptive anchor. The result is a
+terminal summary and a visual HTML report showing which pages rank best in your internal link graph and why.
 
-## ⚡ The Breakthrough: System 1 (Jev) + System 2 (Frontier AI)
-
-* **The Problem:** Auditing internal link structures across hundreds of pages with traditional frontier models (Claude Opus / GPT-4) costs \$40–\$100+ and takes hours of sequential inference.
-* **The Solution (The Cascade Pattern):**
-  1. **TypeSafe Jev (System 1):** Sub-second parallel decision engine evaluates **8,000+ candidate pairs in 45 seconds for ~\$0.21** (~190x cheaper) using typed primitives: `noul` (yes/no), `score` (relevance), and `choice` (clustering).
-  2. **Auxiliary Frontier LLMs (System 2 - Gemini / Claude / GPT):** Reserved strictly for high-nuance rewriting, inserting descriptive non-repetitive anchor texts into natural sentences.
-  3. **Google Search Console Integration:** Targets high-impression keywords lingering on **SERP Page 2 (Positions 11.0 to 20.0)** to pump link equity where it creates instant rank jumps.
+> Inspired by **Borja (@borjafat)**, **TypeSafe Jev** and **Distribb**: rebuilding internal link maps is a
+> classification and graph problem, not creative writing.
 
 ---
 
-## 🤖 AI Models & Accessibility: How Does It Work for Users?
+## Quick start (5 minutes)
 
-We designed SEO-Magus so **anyone can clone the repo and run it immediately without paying for API keys or setting up credit cards**:
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│  Tier 1: Out-of-the-Box Simulation (Zero Keys Required)                │
-│  - Default mode when no API keys are provided.                         │
-│  - Uses built-in heuristic decision engine and regex anchor extractor. │
-│  - 100% Free, offline, instant testing and benchmark verification.    │
-├────────────────────────────────────────────────────────────────────────┤
-│  Tier 2: Free Local AI (Ollama / Llama 3 / Mistral)                   │
-│  - Connects to local Ollama daemon (localhost:11434).                  │
-│  - Zero cloud dependencies, 100% private, no rate limits.              │
-│  - Covered by Hacktoberfest Issue #5.                                  │
-├────────────────────────────────────────────────────────────────────────┤
-│  Tier 3: Production Cloud APIs                                         │
-│  - System 1: TypeSafe Jev (api.typesafe.ai) for sub-second speeds.     │
-│  - System 2: Google Gemini (Free tier in Google AI Studio), OpenAI     │
-│    or Anthropic for conversational sentence rewriting.                 │
-└────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🏛️ Famous Sites Benchmarks
-
-SEO-Magus includes verified benchmark fixtures and tests modeled after industry-leading domain architectures:
-
-| Company | Tested Topology | Key Verified Internal Links |
-| :--- | :--- | :--- |
-| **Mailchimp** | Email Marketing Guide (Pillar) $\leftrightarrow$ Welcome Sequence (Support) $\rightarrow$ Audience Segmentation (Money) | `welcome-sequence-guide` $\rightarrow$ `audience-segmentation` |
-| **Stripe** | Online Payments (Pillar) $\leftrightarrow$ Fraud Prevention / Radar (Support) $\rightarrow$ Stripe Checkout (Money) | `how-to-prevent-credit-card-fraud` $\rightarrow$ `checkout` |
-| **Shopify** | Start Ecommerce Business (Pillar) $\leftrightarrow$ Dropshipping Guide (Support) $\rightarrow$ Point of Sale / POS (Money) | `what-is-dropshipping` $\rightarrow$ `shopify.com/pos` |
-| **GitHub** | CI/CD DevOps (Pillar) $\leftrightarrow$ GitHub Actions Tutorial (Support) $\rightarrow$ GitHub Enterprise (Money) | `what-is-ci-cd` $\rightarrow$ `github-actions-tutorial` & `enterprise` |
-
-Run the benchmarks locally with:
 ```bash
-python3 -m src.cli benchmark --site all
+git clone https://github.com/lucasrafaldini/SEO-magus.git && cd SEO-magus
+make install                      # creates ./venv with everything (Python 3.10+)
+source venv/bin/activate          # optional: `make` targets use ./venv directly
+
+# 1. Try it offline on the built-in mock site (no API key, no internet)
+make audit-mock                   # crawls a deliberately broken site and writes build/audit-greenleaf-scrambled/
+
+# 2. Audit your own site
+cp config/config.example.yaml config/config.yaml     # then list your pillar and money pages
+python -m src.cli audit --url https://your-site.com/ --config config/config.yaml --html build/report
 ```
 
----
+Open `build/report/audit.html`: site health, proposed links with the rewritten sentences, a semantic map of your topic
+clusters and a ranking leaderboard. No configuration or API key is required to start; see the
+[User Guide](docs/USER_GUIDE.md) for every command.
 
-## 🚀 Quickstart
+| Command | What it does |
+| :--- | :--- |
+| `crawl --url URL` | Crawl + site audit only (fast, free, no classifier calls) |
+| `audit --url URL` | Crawl + site audit + link proposals + ranking (`--html DIR` for the visual report) |
+| `audit --from-crawl FILE` | Same, on a crawl saved with `--save-crawl` (no network) |
+| `benchmark` | Run the benchmark sites, including the ground-truth sanity checks |
+| `serve-mock SITE` | Serve a mock site on localhost to explore or audit it |
 
-### 1. Installation
-Clone the repository:
+## What you get
+
+* **Crawler** – robots.txt and Crawl-delay, sitemaps (indexes, `.xml.gz`), concurrent and polite, retries, redirect
+  chains, canonical/noindex awareness, include/exclude filters, saved crawls. Standard library only. → [Crawler](docs/CRAWLER.md)
+* **Site audit** – 23 checks (orphans, click depth, broken/redirected links, redirect chains, titles, H1s, canonicals,
+  noindex pages in the sitemap, generic anchors…) with a site health score. → [Crawler](docs/CRAWLER.md#site-audit-checks)
+* **Link proposals** – topic clusters and page roles from your config, a pluggable classifier, descriptive non-nested
+  anchors, SERP page 2 steering with Search Console data. → [Algorithms](docs/ALGORITHMS.md)
+* **No vendor lock-in** – TypeSafe Jev is used when `TYPESAFE_API_KEY` is set; otherwise an offline heuristic. Any
+  OpenAI-compatible or Anthropic model, local models (Ollama, LM Studio) or your own Python class can be configured.
+  → [Classifiers](docs/CLASSIFIERS.md)
+* **Ranking** – internal PageRank, CheiRank (hub pages) and pillar click-depth weighted PageRank, before and after the
+  proposed links. → [Algorithms](docs/ALGORITHMS.md)
+* **Reports & logs** – ASCII-safe terminal tables, self-contained HTML reports, `-v`/`-vv` logging of every decision.
+
+## Documentation
+
+| I want to… | Read |
+| :--- | :--- |
+| Use every command, read the reports, follow logs | [User Guide](docs/USER_GUIDE.md) |
+| Configure thresholds, roles, clusters, crawler, classifier | [Configuration](docs/CONFIGURATION.md) · [example config](config/config.example.yaml) |
+| Understand the crawler and the audit checks | [Crawler & Site Audit](docs/CRAWLER.md) |
+| Use another model (OpenAI, Claude, Ollama, my own) | [Classifiers](docs/CLASSIFIERS.md) |
+| Understand the ranking and linking methodology | [Algorithms](docs/ALGORITHMS.md) · [Playbook](docs/PLAYBOOK_GUIDE.md) |
+| Check that results are correct | [Benchmarks & sanity checks](docs/BENCHMARKS.md) |
+| Contribute | [Contributing](CONTRIBUTING.md) · [Architecture & design rationale](docs/ARCHITECTURE.md) |
+
+## Contributing
+
 ```bash
-git clone https://github.com/lucasrafaldini/SEO-magus.git
-cd SEO-magus
+make install && make test          # ~200 tests, fully offline, ~15 s
+make help                          # every target: test scopes, benchmarks, mock sites
 ```
 
-Create a virtual environment (zero external dependencies required for core test execution):
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout, conventions and step-by-step guides (new audit check,
+classifier provider, benchmark site). We are participating in **Hacktoberfest 2026** – pick one of the
+[curated issues](CONTRIBUTING.md#hacktoberfest-issues).
 
-### 2. Run Tests & Benchmarks
-```bash
-# Run unit & famous sites tests
-python3 -m unittest discover tests
+## Current limitations
 
-# Run demo link audit
-python3 -m src.cli audit --demo
+* Pages are not JavaScript-rendered: content injected client-side is invisible to the crawler.
+* Search Console data is only used from the built-in sample dataset; importing your own export is not implemented yet.
+* Sentence rewriting uses the offline anchor engine; LLM-based rewriting ("System 2") is not implemented yet.
 
-# Run SERP Page 2 opportunity scanner
-python3 -m src.cli boost-page2
-```
+## License
 
----
-
-## 🎃 Hacktoberfest 2026: Join Us!
-
-We are participating in **Hacktoberfest 2026**! We welcome contributors of all experience levels.
-
-Check out our [Contributing Guidelines](CONTRIBUTING.md) and pick one of our **7 curated Hacktoberfest issues**:
-
-| Issue | Title | Labels | Difficulty |
-| :---: | :--- | :--- | :---: |
-| **[#1](.github/hacktoberfest_issues/01_wordpress_rest_api_connector.md)** | Add WordPress REST API Connector for automated internal link updates | `good first issue`, `connectors` | Beginner |
-| **[#2](.github/hacktoberfest_issues/02_nextjs_vercel_benchmark.md)** | Add Next.js & Vercel Documentation Site Benchmark | `good first issue`, `tests` | Beginner |
-| **[#3](.github/hacktoberfest_issues/03_ghost_cms_connector.md)** | Implement Ghost CMS Admin API Connector & Webhook Listener | `enhancement`, `connectors` | Intermediate |
-| **[#4](.github/hacktoberfest_issues/04_weighted_pagerank_click_depth.md)** | Weighted Internal PageRank with Click-Depth & CheiRank | `algorithm`, `core-engine` | Intermediate |
-| **[#5](.github/hacktoberfest_issues/05_local_llm_ollama_fallback.md)** | Add Local LLM Fallback (Ollama / Llama.cpp) for Offline System 1 Decisions | `ai-engine`, `enhancement` | Intermediate |
-| **[#6](.github/hacktoberfest_issues/06_interactive_d3_link_graph_visualizer.md)** | Interactive Force-Directed Link Graph Visualizer (D3.js / HTML Export) | `feature`, `visualization` | Intermediate |
-| **[#7](.github/hacktoberfest_issues/07_github_action_pr_seo_audit.md)** | Create GitHub Action to Audit Markdown PRs for Broken Link Silos | `devops`, `automation` | Advanced |
-
----
-
-## 📚 Documentation
-* [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): Complete architecture specification, cascade pattern, and data flow.
-* [`docs/JEV_INTEGRATION.md`](docs/JEV_INTEGRATION.md): TypeSafe Jev API contracts, `choice`/`score`/`noul` primitives.
-* [`docs/PLAYBOOK_GUIDE.md`](docs/PLAYBOOK_GUIDE.md): The 8-step internal linking playbook and autonomous prompt template.
-* [`reports/canivete_cc_audit_report.md`](reports/canivete_cc_audit_report.md): Case study audit of [canivete.cc](https://canivete.cc/).
-* [`reports/zazazine_audit_report.md`](reports/zazazine_audit_report.md): Case study audit of [zazazine.verdindex.com](https://zazazine.verdindex.com/).
-
----
-
-## 📄 License
-This project is licensed under the [MIT License](LICENSE).
+[MIT](LICENSE)

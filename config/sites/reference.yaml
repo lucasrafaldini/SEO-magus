@@ -1,0 +1,22 @@
+# Ledgerly (ledgerly.example) - ground-truth reference site, see src/benchmarks/reference.py.
+thresholds:
+  min_confidence: 0.80
+  min_score: 7.0
+  page2_min_position: 11.0
+  page2_max_position: 20.0
+  min_impressions: 100
+
+taxonomy:
+  pillars:
+    - "/guides/invoicing"
+    - "/guides/payroll"
+  money_pages:
+    - "/features/recurring-billing"
+    - "/pricing"
+  clusters:
+    invoicing: ["/guides/invoicing", "/invoicing/", "/features/recurring-billing"]
+    payroll: ["/guides/payroll", "/payroll/"]
+    sales: ["/pricing"]
+  cluster_affinities:
+    invoicing: [sales]
+    payroll: [sales]

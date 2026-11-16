@@ -1,124 +1,330 @@
 """
 SEO-Magus Command Line Interface.
-Supports both standard library argparse and rich/typer if available.
+
+Settings precedence for every command: explicit flag > --config file > built-in default.
+Global options (before the sub-command):
+  logging   --log-level / -v / -vv / --log-file (or SEO_MAGUS_LOG_LEVEL)
+  output    --unicode (box drawing and glyphs; default plain ASCII), --no-color
 """
 
-import sys
 import argparse
-from src.connectors.sitemap_crawler import SitemapCrawler
+import sys
+import threading
+from pathlib import Path
+from typing import List, Optional
+
+from src.benchmarks import BENCHMARKS, get_benchmark, run_benchmark
+from src.benchmarks.mock_sites import MockSiteServer, available_sites
+from src.config import SiteConfig, load_site_config
 from src.connectors.gsc_connector import GSCConnector
-from src.workflows.linking_optimizer import LinkingOptimizer
-from tests.fixtures.famous_sites_data import (
-    get_mailchimp_pages,
-    get_stripe_pages,
-    get_shopify_pages,
-    get_github_pages,
+from src.connectors.sitemap_crawler import CrawlResult, SitemapCrawler
+from src.log import configure_logging, get_logger
+from src.reporting import analyze_benchmark, analyze_site, write_reports
+from src.reporting.terminal import (
+    TerminalStyle, configure_terminal, get_style, print_leaderboard, print_links, print_site_audit, print_verdict,
 )
+from src.workflows.linking_optimizer import LinkingOptimizer
+from src.workflows.site_audit import audit_site
+
+logger = get_logger(__name__)
+RULE = "=" * 70
 
 
-def run_audit(demo: bool = True, min_score: float = 7.0, min_conf: float = 0.80):
-    print("=" * 70)
-    print("   SEO-MAGUS: HIGH-SPEED SEO SUITE (TypeSafe Jev + Auxiliary AI)   ")
-    print("=" * 70)
+def _banner(title: str) -> None:
+    print(RULE)
+    print(f"   {title}")
+    print(RULE)
 
-    pages = SitemapCrawler.get_sample_site_pages() if demo else []
-    gsc_data = GSCConnector.get_sample_dataset() if demo else []
 
-    print(f"\n[+] Ingested {len(pages)} pages and {len(gsc_data)} Search Console queries.")
-    print("[*] Running parallel Jev System 1 evaluation cascade...")
+def _site_config(config_path: Optional[str]) -> SiteConfig:
+    """Thresholds, taxonomy, link rules and classifier from the config file, or built-in defaults."""
+    if config_path is None:
+        logger.info("No --config given: using built-in defaults (no roles, no clusters, classifier auto)")
+        return SiteConfig()
+    site_config = load_site_config(config_path)
+    taxonomy = site_config.taxonomy
+    print(f"[+] Config loaded from {config_path}: {len(taxonomy.pillars)} pillars, "
+          f"{len(taxonomy.money_pages)} money pages, {len(taxonomy.clusters)} clusters, "
+          f"classifier '{site_config.classifier.provider}'.")
+    return site_config
 
-    optimizer = LinkingOptimizer(min_jev_score=min_score, min_jev_confidence=min_conf)
+
+def _report_paths(paths: List[Path]) -> None:
+    extra = f" (+{len(paths) - 1} site pages)" if len(paths) > 1 else ""
+    print(f"\n[+] HTML report: {paths[0].resolve()}{extra}")
+
+
+def optimizer_site_config(optimizer: LinkingOptimizer, base: Optional[SiteConfig] = None) -> SiteConfig:
+    """The effective configuration of an optimizer (after CLI overrides)."""
+    return SiteConfig(thresholds=optimizer.thresholds, taxonomy=optimizer.taxonomy, link_rules=optimizer.link_rules,
+                      classifier=(base or SiteConfig()).classifier)
+
+
+def _crawl(url: str, site_config: SiteConfig, crawl_overrides: Optional[dict], sitemap: Optional[str]) -> CrawlResult:
+    config = site_config.crawler.with_overrides(**(crawl_overrides or {}))
+    depth = "unlimited" if config.max_depth is None else config.max_depth
+    print(f"\n[*] Crawling {url} (robots.txt, sitemaps, links; max {config.max_pages} pages, depth {depth}, "
+          f"{config.concurrency} parallel requests)...")
+    crawl = SitemapCrawler(url, config=config).crawl(sitemap_url=sitemap)
+    print(f"[+] Crawled {len(crawl.pages)} pages in {crawl.duration_seconds}s "
+          f"({len(crawl.statuses)} internal URLs requested, {len(crawl.broken_urls)} broken, "
+          f"{len(crawl.redirects)} redirects, {len(crawl.robots_blocked)} blocked by robots.txt"
+          + (f", {len(crawl.excluded)} excluded" if crawl.excluded else "")
+          + (", stopped at max pages" if crawl.truncated else "") + ").")
+    return crawl
+
+
+def run_crawl(url: str, config_path: Optional[str] = None, crawl_overrides: Optional[dict] = None,
+              sitemap: Optional[str] = None, save_crawl: Optional[str] = None, limit: int = 25):
+    """Crawl + site audit only (no link classifier calls)."""
+    _banner("SEO-MAGUS: CRAWL AND SITE AUDIT")
+    site_config = _site_config(config_path)
+    crawl = _crawl(url, site_config, crawl_overrides, sitemap)
+    if save_crawl:
+        print(f"[+] Crawl saved to {crawl.save(save_crawl)}")
+    audit = audit_site(crawl, site_config.thresholds.max_click_depth, site_config.thresholds.slow_page_ms)
+    print_site_audit(_AuditOnly(audit), limit=limit)
+    if crawl.external_statuses:
+        print(f"  External links checked: {len(crawl.external_statuses)} ({len(crawl.broken_external_urls)} broken)")
+    return crawl, audit
+
+
+class _AuditOnly:
+    """Minimal stand-in for SiteAnalysis when only the site audit is printed."""
+
+    def __init__(self, site_audit):
+        self.site_audit = site_audit
+
+
+def run_audit(
+    demo: bool = True,
+    min_score: Optional[float] = None,
+    min_conf: Optional[float] = None,
+    config_path: Optional[str] = None,
+    html_dir: Optional[str] = None,
+    url: Optional[str] = None,
+    sitemap: Optional[str] = None,
+    max_pages: Optional[int] = None,
+    top: int = 10,
+    crawl_overrides: Optional[dict] = None,
+    from_crawl: Optional[str] = None,
+    save_crawl: Optional[str] = None,
+):
+    _banner("SEO-MAGUS: SITE AUDIT AND INTERNAL LINKING")
+    site_config = _site_config(config_path)
+    crawl = site_audit = None
+    crawl_overrides = dict(crawl_overrides or {}, **({"max_pages": max_pages} if max_pages else {}))
+    if url or from_crawl:
+        if from_crawl:
+            crawl = CrawlResult.load(from_crawl)
+            url = crawl.start_url
+            print(f"\n[+] Loaded saved crawl of {url}: {len(crawl.pages)} pages (no network access).")
+        else:
+            crawl = _crawl(url, site_config, crawl_overrides, sitemap)
+            if save_crawl:
+                print(f"[+] Crawl saved to {crawl.save(save_crawl)}")
+        pages, gsc_data = crawl.pages, []
+        site_audit = audit_site(crawl, site_config.thresholds.max_click_depth, site_config.thresholds.slow_page_ms)
+        if not pages:
+            print("[!] No HTML page could be crawled: check the URL.")
+            return
+    else:
+        pages = SitemapCrawler.get_sample_site_pages() if demo else []
+        gsc_data = GSCConnector.get_sample_dataset() if demo else []
+        print(f"\n[+] Demo dataset: {len(pages)} pages and {len(gsc_data)} Search Console queries (use --url to crawl a site).")
+
+    optimizer = LinkingOptimizer.from_config(site_config, min_score=min_score, min_confidence=min_conf)
+    print(f"[*] Classifier: {optimizer.classifier.describe()}")
+    print(f"[*] Gate: score >= {optimizer.min_score}, confidence >= {optimizer.min_confidence}")
     report = optimizer.run_optimization(pages, gsc_data)
 
-    print(f"\n[✓] Audit Complete in {report.duration_seconds}s!")
-    print(f"[*] Candidate Pairs Evaluated : {report.candidate_pairs_checked}")
-    print(f"[*] Estimated Jev Cost (USD)   : ${report.estimated_cost_usd:.4f}")
-    print(f"[*] Links Approved & Placed    : {report.links_approved}")
-    print(f"[*] Pages Refused (No fit)     : {report.pages_refused}")
+    print(f"\n[+] Link optimization complete in {report.duration_seconds}s")
+    print(f"[*] Classifier calls           : {report.candidate_pairs_checked}"
+          + (f" ({report.classifier_fallbacks} answered by the fallback)" if report.classifier_fallbacks else ""))
+    print(f"[*] Estimated cost (USD)       : ${report.estimated_cost_usd:.4f}")
+    print(f"[*] Links proposed             : {report.links_approved}")
+    print(f"[*] Page 2 pages boosted       : {len(report.page2_pages_boosted)}")
 
-    print("\n" + "-" * 70)
-    print(f"{'Source Page':<24} | {'Target Page':<24} | {'Anchor Text':<16}")
-    print("-" * 70)
-    for r in report.results:
-        src = r.source_url.split("/")[-1]
-        tgt = r.target_url.split("/")[-1]
-        print(f"{src:<24} | {tgt:<24} | {r.anchor_text:<16}")
-        print(f"  ↳ Proposed Sentence: {r.updated_sentence}")
-        print(f"  ↳ Score: {r.jev_relevance_score}/10 (Conf: {int(r.jev_confidence * 100)}%) - {r.rationale}\n")
+    analysis = analyze_site(
+        "audit", url or "Demo audit", pages, optimizer.baseline_graph, optimizer.link_graph, report,
+        optimizer_site_config(optimizer, site_config), gsc_data,
+    )
+    analysis.site_audit = site_audit
+    orphans = [p for p in analysis.pages if p.crawled and p.orphan_before]
+    fixed = [p for p in orphans if not p.orphan_after]
+    print(f"[*] Orphan pages               : {len(orphans)} ({len(fixed)} get inbound links from the proposals)\n")
+    print_site_audit(analysis)
+    print_links(analysis)
+    print()
+    print_leaderboard(analysis, limit=top)
+    if html_dir:
+        _report_paths(write_reports([analysis], html_dir))
 
-    if report.orphan_pages:
-        print(f"[!] Warning: Orphan pages detected: {report.orphan_pages}")
-    print("-" * 70)
 
-
-def run_boost_page2(min_pos: float = 11.0, max_pos: float = 20.0):
-    print("=" * 70)
-    print("   SERP PAGE 2 OPPORTUNITIES (Positions 11.0 to 20.0)   ")
-    print("=" * 70)
-
+def run_boost_page2(
+    min_pos: Optional[float] = None,
+    max_pos: Optional[float] = None,
+    min_impressions: Optional[int] = None,
+    config_path: Optional[str] = None,
+):
+    thresholds = _site_config(config_path).thresholds.with_overrides(
+        page2_min_position=min_pos, page2_max_position=max_pos, min_impressions=min_impressions
+    )
+    _banner(f"SERP PAGE 2 OPPORTUNITIES (Positions {thresholds.page2_min_position} to "
+            f"{thresholds.page2_max_position}, >= {thresholds.min_impressions} impressions)")
     gsc = GSCConnector()
     dataset = gsc.get_sample_dataset()
-    opps = gsc.get_page2_opportunities(dataset, min_position=min_pos, max_position=max_pos)
-
+    opps = gsc.get_page2_opportunities(
+        dataset,
+        min_position=thresholds.page2_min_position,
+        max_position=thresholds.page2_max_position,
+        min_impressions=thresholds.min_impressions,
+    )
     print(f"{'Query':<30} | {'Avg Pos':<8} | {'Impressions':<12} | {'Clicks'}")
     print("-" * 70)
     for o in opps:
         print(f"{o.query:<30} | {o.position:<8.1f} | {o.impressions:<12} | {o.clicks}")
-    print("=" * 70)
+    print(RULE)
 
 
-def run_benchmark(target: str = "all"):
-    print("=" * 70)
-    print("   SEO-MAGUS FAMOUS SITES BENCHMARK SUITE   ")
-    print("=" * 70)
+def run_benchmark_suite(target: str = "all", html_dir: Optional[str] = None, top: int = 10):
+    _banner("SEO-MAGUS BENCHMARK SUITE")
+    style = get_style()
+    selected = list(BENCHMARKS.values()) if target == "all" else [get_benchmark(target)]
+    analyses = []
+    for site in selected:
+        how = "crawled over HTTP from mock_sites/" if site.build_crawl else "fixture pages"
+        print(f"\n{style.sym('section')} {site.name} ({how}, config: config/sites/{site.config_path.name})")
+        # Fresh optimizer per site, configured by that site's own config file.
+        run = run_benchmark(site)
+        report = run.report
+        print(f"  Processed in {report.duration_seconds}s | {len(run.pages)} pages | links proposed: "
+              f"{report.links_approved} | classifier calls: {report.candidate_pairs_checked} "
+              f"| cost: ${report.estimated_cost_usd:.4f}")
+        analysis = analyze_benchmark(run)
+        print_site_audit(analysis, limit=8)
+        print_verdict(analysis)
+        print_leaderboard(analysis, limit=top)
+        analyses.append(analysis)
+    print("\n" + RULE)
+    if html_dir:
+        _report_paths(write_reports(analyses, html_dir))
 
-    benchmarks = {
-        "mailchimp": ("Mailchimp", get_mailchimp_pages()),
-        "stripe": ("Stripe", get_stripe_pages()),
-        "shopify": ("Shopify", get_shopify_pages()),
-        "github": ("GitHub", get_github_pages()),
+
+def run_serve_mock(site: str, port: int):
+    with MockSiteServer(site, port) as server:
+        print(f"Serving mock site '{site}' at {server.base_url}/  (Ctrl+C to stop)")
+        print(f"Audit it with: python -m src.cli audit --url {server.base_url}/ --config config/sites/greenleaf.yaml")
+        try:
+            threading.Event().wait()
+        except KeyboardInterrupt:
+            print("\nStopped.")
+
+
+def _add_crawl_arguments(parser: argparse.ArgumentParser) -> None:
+    """Crawler options (override the config's `crawler` section)."""
+    group = parser.add_argument_group("crawler (overrides the config 'crawler' section)")
+    group.add_argument("--sitemap", default=None, help="Sitemap URL (default: robots.txt declaration or /sitemap.xml)")
+    group.add_argument("--max-pages", type=int, default=None, help="Maximum number of HTML pages (default 500)")
+    group.add_argument("--max-depth", type=int, default=None, help="Maximum clicks from the start page")
+    group.add_argument("--concurrency", type=int, default=None, help="Parallel requests (default 4)")
+    group.add_argument("--delay", type=float, default=None, help="Seconds between requests (robots Crawl-delay wins if larger)")
+    group.add_argument("--include", action="append", default=None, metavar="REGEX", help="Only crawl matching URL paths (repeatable)")
+    group.add_argument("--exclude", action="append", default=None, metavar="REGEX", help="Skip matching URL paths (repeatable)")
+    group.add_argument("--check-external", action="store_true", default=None, help="Also check external links for errors")
+    group.add_argument("--ignore-robots", action="store_true", help="Ignore robots.txt (only for sites you own)")
+    group.add_argument("--save-crawl", default=None, metavar="FILE", help="Save the crawl as JSON (re-audit with --from-crawl)")
+
+
+def _crawl_overrides(args) -> dict:
+    return {
+        "max_pages": args.max_pages, "max_depth": args.max_depth, "concurrency": args.concurrency,
+        "delay": args.delay, "include": tuple(args.include) if args.include else None,
+        "exclude": tuple(args.exclude) if args.exclude else None, "check_external": args.check_external,
+        "respect_robots": False if args.ignore_robots else None,
     }
 
-    selected = benchmarks.items() if target == "all" else [(target, benchmarks[target])]
 
-    optimizer = LinkingOptimizer(min_jev_score=7.0, min_jev_confidence=0.75)
-
-    for key, (name, pages) in selected:
-        print(f"\n▶ Running Benchmark on {name} ({len(pages)} pages)...")
-        report = optimizer.run_optimization(pages)
-        print(f"  ✓ Processed in {report.duration_seconds}s | Approved: {report.links_approved} | Cost: ${report.estimated_cost_usd:.4f}")
-        for r in report.results[:2]:  # Show top 2 for brevity
-            src = r.source_url.split("/")[-2] or r.source_url.split("/")[-1]
-            tgt = r.target_url.split("/")[-2] or r.target_url.split("/")[-1]
-            print(f"    ↳ [{r.anchor_text}]: {src} -> {tgt}")
-            print(f"      \"{r.updated_sentence}\"")
-    print("\n" + "=" * 70)
+def _log_level(args) -> Optional[str]:
+    if args.log_level:
+        return args.log_level
+    return {0: None, 1: "INFO"}.get(args.verbose, "DEBUG")
 
 
-def main():
-    parser = argparse.ArgumentParser(description="SEO-Magus CLI")
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="python -m src.cli", description="SEO-Magus CLI")
+    parser.add_argument("--log-level", default=None, help="DEBUG, INFO, WARNING (default) or ERROR; env SEO_MAGUS_LOG_LEVEL")
+    parser.add_argument("-v", "--verbose", action="count", default=0, help="-v = INFO, -vv = DEBUG (every decision)")
+    parser.add_argument("--log-file", default=None, help="Also write logs to this file")
+    parser.add_argument("--unicode", action="store_true", default=None,
+                        help="Use box-drawing characters and glyphs (default: plain ASCII; env SEO_MAGUS_UNICODE=1)")
+    parser.add_argument("--no-color", action="store_true", help="Disable colours (also: NO_COLOR environment variable)")
     subparsers = parser.add_subparsers(dest="command", help="Sub-commands")
+    config_help = "YAML site config (thresholds, taxonomy, link_rules, classifier), e.g. config/config.example.yaml"
+    html_help = "Write the visual HTML report (semantic map, ranking leaderboard, site health) to this directory"
 
-    audit_parser = subparsers.add_parser("audit", help="Run link optimization audit")
-    audit_parser.add_argument("--demo", action="store_true", default=True, help="Run with demo dataset")
-    audit_parser.add_argument("--min-score", type=float, default=7.0, help="Minimum Jev score threshold")
-    audit_parser.add_argument("--min-conf", type=float, default=0.80, help="Minimum Jev confidence threshold")
+    audit_parser = subparsers.add_parser("audit", help="Crawl a site (--url) or use the demo dataset, then audit and optimize links")
+    audit_parser.add_argument("--url", default=None, help="Start URL of the site to crawl (e.g. https://example.com/)")
+    audit_parser.add_argument("--from-crawl", default=None, metavar="FILE", help="Audit a crawl saved with --save-crawl")
+    _add_crawl_arguments(audit_parser)
+    audit_parser.add_argument("--demo", action="store_true", default=True, help="Use the demo dataset when --url is not given")
+    audit_parser.add_argument("--min-score", type=float, default=None, help="Minimum classifier score (overrides config; default 7.0)")
+    audit_parser.add_argument("--min-conf", type=float, default=None, help="Minimum classifier confidence (overrides config; default 0.80)")
+    audit_parser.add_argument("--config", default=None, help=config_help)
+    audit_parser.add_argument("--html", default=None, metavar="DIR", help=html_help)
+    audit_parser.add_argument("--top", type=int, default=10, help="Pages shown in the terminal leaderboard")
 
     boost_parser = subparsers.add_parser("boost-page2", help="Find Page 2 queries to boost")
-    boost_parser.add_argument("--min-pos", type=float, default=11.0, help="Min SERP position")
-    boost_parser.add_argument("--max-pos", type=float, default=20.0, help="Max SERP position")
+    boost_parser.add_argument("--min-pos", type=float, default=None, help="Min SERP position (overrides config; default 11.0)")
+    boost_parser.add_argument("--max-pos", type=float, default=None, help="Max SERP position (overrides config; default 20.0)")
+    boost_parser.add_argument("--min-impressions", type=int, default=None, help="Min impressions (overrides config; default 50)")
+    boost_parser.add_argument("--config", default=None, help=config_help)
 
-    bench_parser = subparsers.add_parser("benchmark", help="Run benchmarks on famous sites")
-    bench_parser.add_argument("--site", choices=["all", "mailchimp", "stripe", "shopify", "github"], default="all")
+    bench_parser = subparsers.add_parser("benchmark", help="Run benchmark sites (each uses its config/sites/*.yaml)")
+    bench_parser.add_argument("--site", choices=["all", *BENCHMARKS], default="all")
+    bench_parser.add_argument("--html", default=None, metavar="DIR", help=html_help)
+    bench_parser.add_argument("--top", type=int, default=10, help="Pages shown in each terminal leaderboard")
 
-    args = parser.parse_args()
+    crawl_parser = subparsers.add_parser("crawl", help="Crawl a site and run the site audit (no link classifier calls)")
+    crawl_parser.add_argument("--url", required=True, help="Start URL of the site to crawl")
+    crawl_parser.add_argument("--config", default=None, help=config_help)
+    crawl_parser.add_argument("--issues", type=int, default=25, help="Issues shown in the terminal")
+    _add_crawl_arguments(crawl_parser)
 
-    if args.command == "audit" or args.command is None:
-        run_audit()
-    elif args.command == "boost-page2":
-        run_boost_page2(args.min_pos, args.max_pos)
-    elif args.command == "benchmark":
-        run_benchmark(args.site)
+    serve_parser = subparsers.add_parser("serve-mock", help="Serve a mock site from mock_sites/ on localhost")
+    serve_parser.add_argument("site", choices=available_sites())
+    serve_parser.add_argument("--port", type=int, default=8000)
+
+    return parser
+
+
+def main(argv: Optional[List[str]] = None):
+    args = build_parser().parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")  # never crash on a console that cannot encode page text
+    configure_logging(_log_level(args), args.log_file)
+    configure_terminal(TerminalStyle.detect(unicode=args.unicode, color=False if args.no_color else None))
+    logger.info("Command: %s", args.command or "audit (default)")
+
+    try:
+        if args.command is None:
+            run_audit()
+        elif args.command == "audit":
+            run_audit(min_score=args.min_score, min_conf=args.min_conf, config_path=args.config, html_dir=args.html,
+                      url=args.url, sitemap=args.sitemap, top=args.top, crawl_overrides=_crawl_overrides(args),
+                      from_crawl=args.from_crawl, save_crawl=args.save_crawl)
+        elif args.command == "crawl":
+            run_crawl(args.url, config_path=args.config, crawl_overrides=_crawl_overrides(args),
+                      sitemap=args.sitemap, save_crawl=args.save_crawl, limit=args.issues)
+        elif args.command == "boost-page2":
+            run_boost_page2(args.min_pos, args.max_pos, args.min_impressions, config_path=args.config)
+        elif args.command == "benchmark":
+            run_benchmark_suite(args.site, html_dir=args.html, top=args.top)
+        elif args.command == "serve-mock":
+            run_serve_mock(args.site, args.port)
+    except (FileNotFoundError, ValueError) as exc:
+        logger.error("%s", exc)
+        sys.exit(2)
 
 
 if __name__ == "__main__":

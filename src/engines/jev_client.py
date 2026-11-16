@@ -15,6 +15,11 @@ from typing import Any, Dict, List, Optional
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 
+from src.engines.classifiers.heuristic import heuristic_scores
+from src.log import get_logger
+
+logger = get_logger(__name__)
+
 
 @dataclass
 class JevQuestion:
@@ -49,10 +54,15 @@ class JevClient:
         self.base_url = base_url
         self.timeout = timeout
         self.mock_mode = mock_mode or not bool(self.api_key)
+        logger.info(
+            "Jev client ready: %s",
+            "offline simulation (no TYPESAFE_API_KEY)" if self.mock_mode else f"API {self.base_url}",
+        )
 
-    def evaluate(self, request: JevEvaluationRequest) -> Dict[str, Any]:
+    def evaluate(self, request: JevEvaluationRequest, raise_on_error: bool = False) -> Dict[str, Any]:
         """
         Execute parallel decision questions on the provided state.
+        Network failures fall back to the offline simulation unless raise_on_error.
         """
         if self.mock_mode:
             return self._mock_evaluate(request)
@@ -66,12 +76,19 @@ class JevClient:
         payload = json.dumps(request.to_dict()).encode("utf-8")
         req = Request(self.base_url, data=payload, headers=headers, method="POST")
 
+        started = time.perf_counter()
         try:
             with urlopen(req, timeout=self.timeout) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except URLError as e:
+                data = json.loads(resp.read().decode("utf-8"))
+        except (URLError, OSError, ValueError) as e:
+            if raise_on_error:
+                from src.engines.classifiers.base import ClassifierError
+                raise ClassifierError(f"Jev API request failed: {e}") from e
             # Fallback to simulation if endpoint is unreachable or in test environment
+            logger.warning("Jev API unreachable (%s); falling back to offline simulation for this request", e)
             return self._mock_evaluate(request)
+        logger.debug("Jev API answered in %.0f ms", 1000 * (time.perf_counter() - started))
+        return data
 
     def evaluate_link_candidate(
         self,
@@ -80,16 +97,22 @@ class JevClient:
         target_url: str,
         target_title: str,
         target_topic: str,
+        target_queries: Optional[List[str]] = None,
+        raise_on_error: bool = False,
     ) -> Dict[str, Any]:
         """
         Evaluate whether source_paragraph should link to target_url.
         Uses two Noul questions (legitimacy, anchor readiness) and one Score question.
+        target_queries are search queries the target ranks for on SERP page 2
+        (from Search Console): they describe how readers look for the target.
         """
+        queries = list(target_queries or [])
+        searched_as = f" Readers search for it as: {'; '.join(queries)}." if queries else ""
         questions = [
             JevQuestion(
                 id="has_legitimate_contextual_reason",
                 type="noul",
-                prompt=f"Does this source paragraph have an immediate, natural educational/contextual reason to guide the reader to the page about '{target_topic}' ({target_title}) without being spammy or off-topic?",
+                prompt=f"Does this source paragraph have an immediate, natural educational/contextual reason to guide the reader to the page about '{target_topic}' ({target_title}) without being spammy or off-topic?{searched_as}",
             ),
             JevQuestion(
                 id="candidate_anchor_present",
@@ -111,50 +134,35 @@ class JevClient:
                 "target_url": target_url,
                 "target_title": target_title,
                 "target_topic": target_topic,
+                "target_queries": queries,
             },
             questions=questions,
         )
 
-        return self.evaluate(req)
+        return self.evaluate(req, raise_on_error=raise_on_error)
 
     def _mock_evaluate(self, request: JevEvaluationRequest) -> Dict[str, Any]:
         """
-        Realistic heuristic-based mock simulation when no API key is provided.
-        Simulates sub-second latency and realistic scoring.
+        Offline simulation used when no API key is provided: answers Jev's
+        questions with the shared heuristic (src/engines/classifiers/heuristic.py).
         """
-        time.sleep(0.02)  # Simulate 20ms Jev latency
         state = request.state
+        relevant, confidence, score, matched = heuristic_scores(
+            state.get("source_paragraph", ""), state.get("target_title", ""),
+            state.get("target_topic", ""), state.get("target_queries", []),
+        )
         results: Dict[str, Any] = {}
-
         for q in request.questions:
             if q.type == "noul":
-                source_p = state.get("source_paragraph", "").lower()
-                target_topic = state.get("target_topic", "").lower()
-                target_title = state.get("target_title", "").lower()
-
-                topic_words = set(target_topic.split() + target_title.split()) - {
-                    "the", "a", "an", "and", "or", "in", "to", "for", "of", "with"
-                }
-                match_count = sum(1 for w in topic_words if w and w in source_p)
-
-                has_match = match_count >= 1
-                confidence = min(0.98, 0.65 + (match_count * 0.12)) if has_match else 0.25
-
-                results[q.id] = {
-                    "value": has_match,
-                    "confidence": round(confidence, 2),
-                }
-
+                results[q.id] = {"value": relevant, "confidence": confidence}
             elif q.type == "score":
-                source_p = state.get("source_paragraph", "").lower()
-                target_topic = state.get("target_topic", "").lower()
-                topic_words = set(target_topic.split()) - {"the", "a", "to", "for"}
-                match_count = sum(1 for w in topic_words if w and w in source_p)
-                score = min(9.6, 5.0 + match_count * 1.8) if match_count > 0 else 3.2
-                results[q.id] = {"score": round(score, 1)}
-
+                results[q.id] = {"score": score}
             elif q.type == "choice":
                 selected = q.options[0] if q.options else "General"
                 results[q.id] = {"selected": selected, "confidence": 0.88}
 
-        return {"results": results, "latency_ms": 25, "simulated": True}
+        logger.debug(
+            "Jev simulation: %s -> %s matched %d topic tokens %s",
+            state.get("source_url"), state.get("target_url"), len(matched), sorted(matched),
+        )
+        return {"results": results, "latency_ms": 0, "simulated": True}

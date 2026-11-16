@@ -1,0 +1,10 @@
+# GitHub benchmark - roles from the README benchmark topology table.
+thresholds:
+  min_confidence: 0.75
+  min_score: 7.0
+
+taxonomy:
+  pillars:
+    - "/resources/articles/devops/what-is-ci-cd"
+  money_pages:
+    - "/enterprise"

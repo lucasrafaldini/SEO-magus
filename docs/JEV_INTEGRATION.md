@@ -2,6 +2,11 @@
 
 This guide details how **TypeSafe Jev** (System One) is integrated into `SEO-magus` for lightning-fast, ultra-low cost decision making, alongside auxiliary LLMs (System Two).
 
+> **Jev is the default link classifier, not a requirement.** The optimizer talks to the provider-agnostic
+> `LinkClassifier` interface (`src/engines/classifiers/`). With `classifier.provider: auto` (the default) Jev is used
+> whenever `TYPESAFE_API_KEY` is set; any OpenAI-compatible, Anthropic, local (Ollama, LM Studio) or custom Python
+> classifier can be configured instead – see the README section "Choosing the link classifier".
+
 ---
 
 ## 1. TypeSafe Jev Overview

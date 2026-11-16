@@ -1,0 +1,19 @@
+# ZAZAZINE benchmark - editorial clusters from reports/zazazine_audit_report.md, section 2.
+# Its money pages (Verdindex network, newsletter) are outside the crawled fixture.
+thresholds:
+  min_confidence: 0.75
+  min_score: 7.0
+
+taxonomy:
+  clusters:
+    cannabis_politica:
+      - "cure-act-projeto-protege-usuarios-de-maconha-em-empregos-federais"
+      - "dea-deixa-estados-no-escuro-sobre-reclassificacao-da-cannabis"
+      - "dc-circuit-rejeita-bloquear-reclassificacao-maconha"
+      - "virginia-varejo-cannabis-hb-30"
+    tecnologia_ia:
+      - "custo-de-ia-cai-47-por-trimestre"
+      - "google-lanca-gemini-3-8"
+      - "majors-stability-ai-universal-elevenlabs"
+    musica_moda:
+      - "streetwear-2026-oversize-arquitetonico-eco-utility"

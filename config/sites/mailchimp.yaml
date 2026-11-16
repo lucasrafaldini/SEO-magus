@@ -1,0 +1,11 @@
+# Mailchimp benchmark - roles from the README benchmark topology table.
+thresholds:
+  min_confidence: 0.75
+  min_score: 7.0
+
+taxonomy:
+  pillars:
+    - "/resources/email-marketing-guide/"
+  money_pages:
+    - "/features/audience-segmentation/"
+    - "/pricing/"

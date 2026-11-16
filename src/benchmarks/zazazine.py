@@ -1,14 +1,14 @@
 """
-ZAZAZINE Live Site Analysis & Internal Linking Audit.
-Runs the Jev System 1 + Auxiliary AI cascade over ZAZAZINE editoriais and Verdindex network.
+ZAZAZINE (zazazine.verdindex.com) benchmark pages.
+
+Representative crawled pages of ZAZAZINE (zazazine.verdindex.com). One benchmark site among others:
+its roles, clusters and thresholds live in config/sites/zazazine.yaml, exactly like
+any user's site config; nothing in the engines is specific to it.
 """
 
 from typing import List
-from src.engines.jev_client import JevClient
-from src.engines.auxiliary_ai import AuxiliaryAIEngine
-from src.engines.link_graph import LinkGraph
+
 from src.connectors.sitemap_crawler import ParsedPage
-from src.workflows.linking_optimizer import LinkingOptimizer
 
 
 def build_zazazine_pages() -> List[ParsedPage]:
@@ -108,26 +108,3 @@ def build_zazazine_pages() -> List[ParsedPage]:
             existing_internal_links=[],
         ),
     ]
-
-
-def run_zazazine_audit():
-    pages = build_zazazine_pages()
-    print(f"Loaded {len(pages)} representative articles across ZAZAZINE editorial clusters.")
-
-    optimizer = LinkingOptimizer(min_jev_score=7.0, min_jev_confidence=0.75)
-    report = optimizer.run_optimization(pages)
-
-    print(f"\n[+] ZAZAZINE Audit Run Complete in {report.duration_seconds}s!")
-    print(f"Total candidate pairs evaluated: {report.candidate_pairs_checked}")
-    print(f"Total links approved: {report.links_approved}")
-    print(f"Total pages refused: {report.pages_refused}")
-
-    return report
-
-
-if __name__ == "__main__":
-    report = run_zazazine_audit()
-    for r in report.results:
-        print(f"\n--- Link: {r.source_url.split('/')[-1]} -> {r.target_url.split('/')[-1]} ---")
-        print(f"Cluster: {r.cluster} | Anchor: '{r.anchor_text}' | Score: {r.jev_relevance_score}")
-        print(f"Proposed: {r.updated_sentence}")

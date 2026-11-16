@@ -1,6 +1,12 @@
 # SEO-Magus: Autonomous SEO Optimization & Analysis Suite
 ## Powered by TypeSafe Jev (System One) & Auxiliary Frontier AIs (System Two)
 
+> **About this document.** This is the original design rationale (benchmarks, the cascade idea, Jev primitives).
+> The implementation has since evolved: the System 1 classifier is pluggable (Jev is the default, not a requirement –
+> [CLASSIFIERS.md](CLASSIFIERS.md)), sites are crawled and audited ([CRAWLER.md](CRAWLER.md)) and the methodology is
+> specified in [ALGORITHMS.md](ALGORITHMS.md). The current code layout is in
+> [CONTRIBUTING.md](../CONTRIBUTING.md#project-layout).
+
 ---
 
 ## Executive Summary & Background
@@ -151,35 +157,21 @@ While Jev handles the high-volume decision graph, Auxiliary Frontier AIs (Gemini
 
 ## Part 5: Modular Suite Specification & Directory Layout
 
-The suite will be structured as follows:
+The implemented layout is documented in [CONTRIBUTING.md](../CONTRIBUTING.md#project-layout). Mapping from the
+original plan:
 
-```
-SEO-magus/
-├── docs/
-│   ├── ARCHITECTURE.md          # Complete architectural specification (this file)
-│   ├── JEV_INTEGRATION.md       # API schemas, request/response models for Jev
-│   └── PLAYBOOK_GUIDE.md        # The 8-step internal linking playbook
-├── config/
-│   ├── config.example.yaml      # API keys, site URLs, thresholds
-│   └── rules.json               # Linking taxonomy & cluster definitions
-├── src/
-│   ├── connectors/
-│   │   ├── gsc_connector.py     # Google Search Console API client
-│   │   ├── sitemap_crawler.py   # Sitemap & HTML body extractor
-│   │   └── cms_writer.py        # WordPress / Ghost / GitHub Markdown adapter
-│   ├── engines/
-│   │   ├── jev_client.py        # TypeSafe Jev System One SDK client
-│   │   ├── candidate_finder.py  # Fast candidate pair generator
-│   │   ├── link_graph.py        # Internal link graph analysis & PageRank
-│   │   └── auxiliary_ai.py      # Frontier LLM anchor insertion & copywriting
-│   ├── workflows/
-│   │   ├── audit_pipeline.py    # Complete site crawl & gap audit
-│   │   ├── page2_booster.py     # Position 11-20 prioritization pipeline
-│   │   └── linking_optimizer.py # High-speed link matrix builder
-│   └── cli.py                   # CLI entrypoint for running audits & jobs
-├── tests/
-└── requirements.txt
-```
+| Planned module | Status |
+| :--- | :--- |
+| `connectors/gsc_connector.py` | implemented (sample dataset; importing exports is open) |
+| `connectors/sitemap_crawler.py` | implemented as a full crawler (`connectors/crawling/`) |
+| `connectors/cms_writer.py` | open (Hacktoberfest issues #1 WordPress, #3 Ghost) |
+| `engines/jev_client.py` | implemented; one provider of `engines/classifiers/` |
+| `engines/candidate_finder.py` | implemented inside `workflows/linking_optimizer.py` (cluster affinities) |
+| `engines/link_graph.py` | implemented (PageRank, CheiRank, pillar-weighted PageRank) |
+| `engines/auxiliary_ai.py` | implemented (offline anchor engine; LLM rewriting is open) |
+| `workflows/audit_pipeline.py` | implemented as `workflows/site_audit.py` + `cli.py audit` |
+| `workflows/page2_booster.py` | implemented as Search Console steering in the optimizer + `cli.py boost-page2` |
+| `config/rules.json` | replaced by `config/sites/<site>.yaml` (taxonomy, link rules) |
 
 ---
 

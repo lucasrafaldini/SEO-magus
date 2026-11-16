@@ -1,0 +1,47 @@
+# Canivete.cc benchmark - roles and clusters from reports/canivete_cc_audit_report.md, section 2
+# (restricted to the pages in src/benchmarks/canivete.py). Cluster affinities allow the
+# CLT <-> PJ/RH transitions the report approves (e.g. rescisao guide -> carta de demissao).
+thresholds:
+  min_confidence: 0.75
+  min_score: 7.0
+
+taxonomy:
+  pillars:
+    - "/guias/guia-rescisao-trabalhista-clt-2026/"
+    - "/guias/calculo-salario-liquido-inss-irpf-2026/"
+    - "/guias/clt-vs-pj-equivalencia-salarial/"
+    - "/financas/calculadora-aposentadoria-inss/"
+    - "/guias/qr-code-pix-emv-br-code-como-funciona/"
+  money_pages:
+    - "/financas/calculadora-rescisao-clt/"
+    - "/financas/calculadora-salario-liquido/"
+    - "/financas/comparador-clt-vs-pj/"
+    - "/negocios/gerador-contrato-prestacao-servicos/"
+    - "/financas/simulador-emprestimo-consignado-inss/"
+    - "/desenvolvedores/gerador-qr-code-pix/"
+  clusters:
+    trabalhista:
+      - "guia-rescisao-trabalhista-clt-2026"
+      - "calculo-salario-liquido-inss-irpf-2026"
+      - "calculadora-rescisao-clt"
+      - "calculadora-salario-liquido"
+      - "calculadora-seguro-desemprego"
+    juridico_rh:
+      - "clt-vs-pj-equivalencia-salarial"
+      - "comparador-clt-vs-pj"
+      - "gerador-contrato-prestacao-servicos"
+      - "gerador-carta-demissao"
+    credito_previdencia:
+      - "calculadora-aposentadoria-inss"
+      - "simulador-emprestimo-consignado-inss"
+    dev_tech:
+      - "qr-code-pix-emv-br-code-como-funciona"
+      - "gerador-qr-code-pix"
+  cluster_affinities:
+    trabalhista: [juridico_rh]
+    juridico_rh: [trabalhista]
+
+# Tool site: a calculator (money page) naturally leads to the related helper tool in the
+# same topic, e.g. rescisao calculator -> seguro-desemprego calculator (report link 3).
+link_rules:
+  money_to_support: same_cluster

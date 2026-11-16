@@ -1,0 +1,24 @@
+# GreenLeaf Gardening (greenleaf.example) - the mock sites in mock_sites/ (good and scrambled
+# versions of the same site share this config). See src/benchmarks/mock_sites.py.
+thresholds:
+  min_confidence: 0.80
+  min_score: 7.0
+  max_click_depth: 3
+
+taxonomy:
+  pillars:
+    - "/guides/composting/"
+    - "/guides/vegetable-gardening/"
+  money_pages:
+    - "/shop/compost-tumbler/"
+    - "/shop/raised-bed-kit/"
+  clusters:
+    composting: ["/guides/composting", "/blog/hot-composting", "/blog/compost-bin", "/shop/compost-tumbler"]
+    vegetables: ["/guides/vegetable-gardening", "/blog/raised-bed-soil", "/blog/tomato-watering", "/shop/raised-bed-kit"]
+  cluster_affinities:
+    general: [composting, vegetables]
+    composting: [vegetables]
+    vegetables: [composting]
+
+classifier:
+  provider: heuristic   # deterministic benchmark; try any provider with your own config

@@ -6,38 +6,63 @@ site:
   target_country: "USA"
   target_device: "DESKTOP"
 
-# AI Model Configuration
-# -------------------------------------------------------------
-# Tier 1: Zero-Config / Offline Simulation (Default)
-#   Leave api_keys empty. Built-in fast heuristics evaluate links
-#   and deterministic regex extracts anchors. 100% Free, zero setup.
-#
-# Tier 2: Free Local AI (Ollama)
-#   Run open-weight models (Llama 3.2, Mistral, Qwen) completely offline:
-#   system1_provider: "ollama"  # Requires Ollama running on localhost:11434
-#   ollama_model: "llama3.2:3b"
-#
-# Tier 3: Production Cloud APIs
-#   Ultra-fast sub-second System 1 classification with TypeSafe Jev,
-#   paired with Gemini (Free tier in Google AI Studio) or OpenAI/Claude.
-# -------------------------------------------------------------
-model_providers:
-  system1_provider: "auto"     # "auto" (uses Jev if key present, else simulation), "jev", or "ollama"
-  system2_provider: "auto"     # "auto" (uses Gemini/OpenAI if key present, else heuristic engine)
+# Crawler (used by `crawl` and `audit --url`; CLI flags override it). Unknown keys are rejected.
+crawler:
+  max_pages: 500              # HTML pages to crawl at most
+  max_depth: null             # link-following depth from the start page (null = unlimited)
+  concurrency: 4              # parallel requests
+  delay: 0.0                  # seconds between requests (robots.txt Crawl-delay wins if larger)
+  timeout: 10                 # seconds per request
+  retries: 2                  # retries on HTTP 429/5xx and network errors (exponential backoff)
+  respect_robots: true
+  follow_nofollow: true       # also discover pages through nofollow links
+  allow_subdomains: false
+  include: []                 # regexes on the URL path: only matching URLs are crawled
+  exclude: []                 # regexes on the URL path, e.g. ["^/tag/", "^/wp-admin/"]
+  check_external: false       # request external link targets to find broken outbound links
+  # strip_query_params: ["utm_*", "gclid", "fbclid", ...]   # tracking parameters removed from URLs
 
-api_keys:
-  typesafe_api_key: ""         # Optional: TypeSafe Jev API Key (api.typesafe.ai)
-  gemini_api_key: ""           # Optional: Google AI Studio key (Free tier available)
-  openai_api_key: ""           # Optional: OpenAI API Key
-  anthropic_api_key: ""        # Optional: Anthropic Claude API Key
+# Link classifier ("System 1" categoriser): the model that decides whether a candidate link
+# is legitimate. Any provider can be used; unknown keys are rejected.
+#   auto (default)     TypeSafe Jev when TYPESAFE_API_KEY is set, else the offline heuristic
+#   heuristic          offline, deterministic, free (no model)
+#   jev                TypeSafe Jev System One                     key: TYPESAFE_API_KEY
+#   openai | gemini | openrouter | groq   OpenAI-compatible APIs   key: <PROVIDER>_API_KEY
+#   anthropic          Anthropic Messages API                      key: ANTHROPIC_API_KEY
+#   ollama | lmstudio  local models, no key (default base_url on localhost)
+#   openai_compatible  any OpenAI-compatible server (vLLM, llama.cpp, proxies): set base_url
+#   python:package.module:ClassName   your own classifier class (see README)
+# API keys are only read from environment variables (api_key_env), never from this file.
+classifier:
+  provider: auto
+  model: ""                   # required for LLM providers (ollama defaults to llama3.2:3b)
+  base_url: ""                # override the provider endpoint
+  api_key_env: ""             # default: the provider's variable listed above
+  timeout: 30
+  fallback: heuristic         # heuristic | none - what to do if the provider is unusable
+  # cost_per_call_usd: 0.0    # for cost estimates (Jev default: 0.000025)
 
+# Decision thresholds (used by `audit` and `boost-page2` with --config; CLI flags override them).
+# (Legacy names jev_noul_min_confidence / jev_score_min are still accepted, with a warning.)
+# Omitted keys use the built-in defaults shown in brackets; unknown keys are rejected.
 thresholds:
-  jev_noul_min_confidence: 0.85
-  jev_score_min: 7.0
-  page2_min_position: 11.0
+  min_confidence: 0.85            # classifier confidence that a link is legitimate [0.80]
+  min_score: 7.0                  # classifier relevance score, 1-10 [7.0]
+  page2_min_position: 11.0        # SERP page 2 window, inclusive [11.0 - 20.0]
   page2_max_position: 20.0
-  min_impressions: 100
+  min_impressions: 100            # min GSC impressions for a page 2 opportunity [50]
+  anchor_min_words: 2             # min distinct topic words in an anchor ("descriptive anchors") [2]
+  max_click_depth: 3              # site audit: pages deeper than this are flagged [3]
+  slow_page_ms: 2000              # site audit: slower responses are flagged [2000]
 
+# Site taxonomy: everything site-specific lives here (the engines assume nothing about any site).
+# Role entries are URL paths or absolute URLs, matched exactly (trailing slash ignored);
+# unlisted pages are support pages. Pillars anchor the click-depth weighted PageRank and
+# money pages may not link to support posts.
+# Cluster patterns are case-insensitive URL substrings, first match wins; unmatched pages are
+# in the "general" cluster. Pages link within their cluster plus its cluster_affinities.
+# Entries that match no crawled page are reported with a TaxonomyWarning.
+# See config/sites/*.yaml for complete examples (the benchmark sites).
 taxonomy:
   pillars:
     - "/guides/email-marketing-mastery"
@@ -46,3 +71,14 @@ taxonomy:
     - "/pricing"
     - "/features/automation"
     - "/features/segmentation"
+  # clusters:
+  #   email: ["/guides/email", "/blog/welcome", "/guides/domain-authentication"]
+  #   sales: ["/pricing", "/features/"]
+  # cluster_affinities:
+  #   email: [sales]
+
+# Site linking policy. Unknown keys are rejected.
+link_rules:
+  # May money pages link to support posts? forbid (default) | same_cluster | allow
+  # ("same_cluster" suits tool sites whose calculators lead to related helper tools).
+  money_to_support: forbid
