@@ -138,12 +138,14 @@ class WikipediaSource:
     def pageviews(self, titles: Sequence[str], days: int = 60) -> Dict[str, float]:
         views: Dict[str, float] = {}
         for start in range(0, len(titles), BATCH):
-            data = self._query(action="query", prop="pageviews", titles="|".join(titles[start:start + BATCH]),
-                               pvipdays=days)
-            for page in data.get("query", {}).get("pages", []):
-                daily = page.get("pageviews") or {}
-                if daily:
-                    views[page["title"]] = float(sum(v or 0 for v in daily.values()))
+            for data in self._query_all(action="query", prop="pageviews",
+                                        titles="|".join(titles[start:start + BATCH]), pvipdays=days):
+                for page in data.get("query", {}).get("pages", []):
+                    daily = page.get("pageviews") or {}
+                    if daily:
+                        views[page["title"]] = views.get(page["title"], 0.0) + float(
+                            sum(v or 0 for v in daily.values())
+                        )
         return views
 
     def all_links(self, titles: Sequence[str]) -> Dict[str, List[str]]:
