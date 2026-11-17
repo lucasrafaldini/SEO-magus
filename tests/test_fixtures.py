@@ -11,10 +11,23 @@ import warnings
 
 import pytest
 
+from pathlib import Path
+
 from src.benchmarks import mock_sites, run_benchmark
 from src.benchmarks.mock_sites import EXPECTED_ISSUES, PRODUCTION_BASE
+from src.evaluation.corpus import Corpus
+from src.evaluation.runner import evidence_role
 from src.workflows.site_audit import audit_site
 from tests.fixtures.crawls import SITES, crawl_path, load_crawl, normalized, offline_benchmark
+
+CORPORA_DIR = Path(__file__).resolve().parent.parent / "corpora"
+EXPECTED_CORPORA = {
+    "internet-archive.jsonl.gz": ("internet_archive", {"labels", "popularity"}, 200),
+    "stackexchange-webmasters.jsonl.gz": ("stackexchange", {"links", "extra_links", "labels", "popularity"}, 120),
+    "wikipedia-en.jsonl.gz": ("wikipedia", {"links", "extra_links", "labels", "popularity"}, 150),
+    "wikipedia-pt.jsonl.gz": ("wikipedia", {"links", "extra_links", "labels", "popularity"}, 80),
+    "wikipedia-seo-snowball.jsonl.gz": ("wikipedia", {"links", "extra_links", "labels", "popularity"}, 100),
+}
 
 
 class TestSavedCrawls(unittest.TestCase):
@@ -48,6 +61,20 @@ class TestSavedCrawls(unittest.TestCase):
         self.assertEqual(run.approved_links, run.site.expected_links - set(run.site.known_gaps))
         self.assertEqual(len(run.approved_links), len(mock_sites.SCRAMBLED_EXPECTED_PROPOSALS))
         self.assertEqual(run.crawl_requests, [])  # no HTTP involved
+
+
+class TestBundledOnlineCorpora(unittest.TestCase):
+    def test_bundled_online_corpora_exist_and_qualify_as_real_evidence(self):
+        self.assertTrue(CORPORA_DIR.is_dir(), "corpora/ directory with bundled real-world corpora is missing")
+        found = {p.name for p in CORPORA_DIR.glob("*.jsonl.gz")}
+        self.assertTrue(set(EXPECTED_CORPORA).issubset(found))
+        for filename, (expected_source, expected_layers, min_docs) in EXPECTED_CORPORA.items():
+            with self.subTest(corpus=filename):
+                corpus = Corpus.load(CORPORA_DIR / filename)
+                self.assertEqual(corpus.provenance.source, expected_source)
+                self.assertGreaterEqual(len(corpus), min_docs)
+                self.assertTrue(expected_layers.issubset(corpus.layers))
+                self.assertEqual(evidence_role(corpus, "ranking"), "evidence")
 
 
 @pytest.mark.integration

@@ -232,18 +232,20 @@ define need_contact
 	User-Agent), or OFFLINE=1 to replay the record/replay cache"; exit 2; }
 endef
 
-eval-corpora: $(STAMP) ## Build the offline corpora: synthetic (3 site styles, 2 languages) + the saved mock-site crawl
-	@$(STEP) --step "1/5 synthetic encyclopedia, English" -- \
+eval-corpora: $(STAMP) ## Build the offline corpora: bundled real corpora + synthetic (3 site styles, 2 languages) + saved mock-site crawl
+	@$(STEP) --step "1/6 synthetic encyclopedia, English" -- \
 		$(EVAL) synthetic --preset encyclopedia --language en --pages 3000 --topics 20 --out $(EVAL_CORPORA)/synthetic-encyclopedia-en.jsonl.gz
-	@$(STEP) --step "2/5 synthetic encyclopedia, Portuguese" -- \
+	@$(STEP) --step "2/6 synthetic encyclopedia, Portuguese" -- \
 		$(EVAL) synthetic --preset encyclopedia --language pt --pages 2000 --topics 16 --out $(EVAL_CORPORA)/synthetic-encyclopedia-pt.jsonl.gz
-	@$(STEP) --step "3/5 synthetic catalog" -- \
+	@$(STEP) --step "3/6 synthetic catalog" -- \
 		$(EVAL) synthetic --preset catalog --pages 2000 --topics 16 --out $(EVAL_CORPORA)/synthetic-catalog-en.jsonl.gz
-	@$(STEP) --step "4/5 synthetic forum" -- \
+	@$(STEP) --step "4/6 synthetic forum" -- \
 		$(EVAL) synthetic --preset forum --pages 2000 --topics 16 --out $(EVAL_CORPORA)/synthetic-forum-en.jsonl.gz
-	@$(STEP) --step "5/5 saved mock-site crawl" -- \
+	@$(STEP) --step "5/6 saved mock-site crawl" -- \
 		$(EVAL) crawl --from-crawl tests/fixtures/greenleaf-good.crawl.json --name greenleaf-good-crawl \
 		--out $(EVAL_CORPORA)/greenleaf-good-crawl.jsonl.gz
+	@$(STEP) --step "6/6 bundled real-world online corpora (corpora/*.jsonl.gz)" -- \
+		sh -c 'mkdir -p $(EVAL_CORPORA) && cp corpora/*.jsonl.gz $(EVAL_CORPORA)/ && $(EVAL) info $(EVAL_CORPORA)/wikipedia-*.jsonl.gz $(EVAL_CORPORA)/internet-archive.jsonl.gz $(EVAL_CORPORA)/stackexchange-*.jsonl.gz'
 
 eval-wikipedia: $(STAMP) ## Fetch a Wikipedia sample (CONTACT=..., WIKI_LANG, WIKI_CATEGORIES, EVAL_LIMIT, OFFLINE=1 replays the cache)
 	$(need_contact)

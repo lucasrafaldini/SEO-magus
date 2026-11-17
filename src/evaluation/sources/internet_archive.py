@@ -70,7 +70,7 @@ class InternetArchiveSource:
     def sample_collection(self, collection: str, count: int, rng: random.Random,
                           mediatype: Optional[str] = None) -> List[dict]:
         query = f"collection:({collection})" + (f" AND mediatype:({mediatype})" if mediatype else "")
-        total = self._search(query, 1, 1).get("numFound", 0)
+        total = min(10000, self._search(query, 1, 1).get("numFound", 0))
         pages = list(range(1, max(1, -(-total // ROWS)) + 1))
         rng.shuffle(pages)
         items: List[dict] = []
