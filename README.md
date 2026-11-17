@@ -2,7 +2,6 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Hacktoberfest: 2026](https://img.shields.io/badge/Hacktoberfest-2026-orange.svg)](https://hacktoberfest.com/)
 
 **Crawl a website, find its technical SEO problems and get ready-to-paste internal links that fix its structure.**
 
@@ -40,6 +39,7 @@ clusters and a ranking leaderboard. No configuration or API key is required to s
 | `crawl --url URL` | Crawl + site audit only (fast, free, no classifier calls) |
 | `audit --url URL` | Crawl + site audit + link proposals + ranking (`--html DIR` for the visual report) |
 | `audit --from-crawl FILE` | Same, on a crawl saved with `--save-crawl` (no network) |
+| `crawl/audit --json FILE --fail-on error` | Machine-readable report + CI exit code 1 when errors are found |
 | `benchmark` | Run the benchmark sites, including the ground-truth sanity checks |
 | `serve-mock SITE` | Serve a mock site on localhost to explore or audit it |
 
@@ -57,6 +57,8 @@ clusters and a ranking leaderboard. No configuration or API key is required to s
 * **Ranking** – internal PageRank, CheiRank (hub pages) and pillar click-depth weighted PageRank, before and after the
   proposed links. → [Algorithms](docs/ALGORITHMS.md)
 * **Reports & logs** – ASCII-safe terminal tables, self-contained HTML reports, `-v`/`-vv` logging of every decision.
+* **Automation ready** – `--json FILE` / `--csv DIR` export the issues, the page ranking and the proposed links, and
+  `--fail-on error|warning` exits with status 1 so a CI job fails on SEO regressions. → [User Guide](docs/USER_GUIDE.md#machine-readable-output-crawl-and-audit)
 
 ## Documentation
 
@@ -68,20 +70,26 @@ clusters and a ranking leaderboard. No configuration or API key is required to s
 | Use another model (OpenAI, Claude, Ollama, my own) | [Classifiers](docs/CLASSIFIERS.md) |
 | Understand the ranking and linking methodology | [Algorithms](docs/ALGORITHMS.md) · [Playbook](docs/PLAYBOOK_GUIDE.md) |
 | Check that results are correct | [Benchmarks & sanity checks](docs/BENCHMARKS.md) |
+| Measure quality at scale (Wikipedia, Internet Archive, Stack Exchange, any site) | [Evaluation methodology](docs/EVALUATION.md) |
 | Contribute | [Contributing](CONTRIBUTING.md) · [Architecture & design rationale](docs/ARCHITECTURE.md) |
 
 ## Contributing
 
 ```bash
-make install && make test          # ~200 tests, fully offline, ~15 s
-make help                          # every target: test scopes, benchmarks, mock sites
+make install && make test          # ~370 tests in three tiers (unit, integration, benchmark), offline, ~40 s
+make test-unit                     # fast feedback while coding, ~10 s
+make ci                            # what CI runs: every tier, both graph backends, coverage gate
+make help                          # every target, grouped by context
+make logs                          # what the last make runs did: step, duration, result, log file
 ```
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout, conventions and step-by-step guides (new audit check,
-classifier provider, benchmark site). We are participating in **Hacktoberfest 2026** – pick one of the
-[curated issues](CONTRIBUTING.md#hacktoberfest-issues).
+classifier provider, benchmark site).
 
 ## Current limitations
+
+* Quality at scale is measurable (`make eval`, [methodology](docs/EVALUATION.md)) but has only been run on synthetic
+  corpora so far: no real-world quality claim is established until the real-source runs are done.
 
 * Pages are not JavaScript-rendered: content injected client-side is invisible to the crawler.
 * Search Console data is only used from the built-in sample dataset; importing your own export is not implemented yet.

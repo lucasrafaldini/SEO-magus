@@ -154,6 +154,34 @@ class AuxiliaryAIEngine:
             )
         logger.info("Auxiliary AI ready: offline anchor engine (anchors >= %d topic words)", min_anchor_words)
 
+    @staticmethod
+    def topic_terms(target_title: str, target_topic: str, target_queries: Sequence[str] = ()) -> Set[str]:
+        """The words an anchor for this target may name (title, H1 and page 2 queries)."""
+        return content_tokens(target_title, target_topic, *target_queries)
+
+    def may_anchor(self, paragraph: str, topic: Set[str]) -> bool:
+        """
+        Necessary condition for craft_link_insertion() to find an anchor in this
+        paragraph: it names at least min_anchor_words distinct topic terms.
+
+        Every anchor is a run of words from one sentence naming >= min_anchor_words
+        distinct topic terms, so a paragraph failing this test can never carry one,
+        whatever a classifier says about it. The optimizer uses it to skip such
+        paragraphs (and page pairs) without changing any result.
+
+        Contract: a subclass that changes how anchors are found (craft_link_insertion)
+        must override may_anchor (and topic_terms) to stay a necessary condition,
+        or set it to None to disable pruning.
+        """
+        found: Set[str] = set()
+        for token in content_tokens(paragraph):
+            for term in topic:
+                if term not in found and tokens_match(token, term):
+                    found.add(term)
+                    if len(found) >= self.min_anchor_words:
+                        return True
+        return False
+
     def craft_link_insertion(
         self,
         source_paragraph: str,

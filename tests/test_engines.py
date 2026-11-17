@@ -692,6 +692,15 @@ class TestJevClient(unittest.TestCase):
     def setUp(self):
         self.client = JevClient(mock_mode=True)
 
+    def test_simulated_choice_questions_pick_the_first_option(self):
+        request = JevEvaluationRequest(state={"source_paragraph": "text", "target_title": "Title"}, questions=[
+            JevQuestion("cluster", "choice", "Which cluster?", options=["Billing", "Email"]),
+            JevQuestion("free", "choice", "Any category?"),
+        ])
+        results = self.client.evaluate(request)["results"]
+        self.assertEqual(results["cluster"], {"selected": "Billing", "confidence": 0.88})
+        self.assertEqual(results["free"]["selected"], "General")
+
     def test_link_candidate_evaluation(self):
         res = self.client.evaluate_link_candidate(
             source_url="https://example.com/blog/tips",
@@ -709,6 +718,13 @@ class TestJevClient(unittest.TestCase):
 class TestAuxiliaryAI(unittest.TestCase):
     def setUp(self):
         self.aux = AuxiliaryAIEngine()
+
+    def test_llm_key_is_reported_as_unused(self):
+        with mock.patch.dict("os.environ", {"GEMINI_API_KEY": "placeholder"}), \
+                self.assertLogs("seo_magus.engines.auxiliary_ai", "WARNING") as logs:
+            engine = AuxiliaryAIEngine()
+        self.assertEqual(engine.api_key, "placeholder")
+        self.assertIn("only the offline anchor engine is implemented", logs.output[0])
 
     def test_craft_link_insertion(self):
         paragraph = "You need to set up an automated welcome sequence for all new signups."

@@ -54,6 +54,21 @@ class TestDocsMatchCode(unittest.TestCase):
                         if option.startswith("--") and option not in ("--help", "--demo"):
                             self.assertTrue(f"`{option}" in guide, f"{name} {option} is not documented")
 
+    def test_every_evaluation_command_and_option_is_documented(self):
+        from src.evaluation.__main__ import build_parser as evaluation_parser
+        doc = read("docs/EVALUATION.md")
+        parser = evaluation_parser()
+        subparsers = next(a for a in parser._actions if a.__class__.__name__ == "_SubParsersAction")
+        for name, sub in subparsers.choices.items():
+            with self.subTest(command=name):
+                self.assertIn(f"| `{name}` |", doc)
+                for action in sub._actions:
+                    for option in action.option_strings:
+                        if option.startswith("--") and option != "--help":
+                            self.assertIn(f"`{option}`", doc, f"evaluation {name} {option} is not documented")
+        for system in [s.name for s in __import__("src.evaluation.systems", fromlist=["x"]).LINK_SYSTEMS]:
+            self.assertIn(f"`{system}`", doc)
+
     def test_every_config_key_is_documented(self):
         doc = read("docs/CONFIGURATION.md")
         keys = {

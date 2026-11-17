@@ -2,16 +2,31 @@
 Crawler: HTML extraction and real HTTP crawls of the mock sites (mock_sites/).
 """
 
+import gzip
+import http.client
+import io
 import tempfile
+import threading
+import time
 import unittest
+import zlib
+from contextlib import redirect_stdout
+from email.message import Message
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
+import pytest
+
+from src import cli
 from src.benchmarks import mock_sites
 from src.benchmarks.mock_sites import EXPECTED_SCAN, PRODUCTION_BASE, MockSiteServer, crawl_mock_site
+from src.connectors.crawling.fetcher import FetchResult, HttpFetcher, RateLimiter, _decode_body
 from src.connectors.sitemap_crawler import (
-    LOCATION_CONTENT, LOCATION_NAVIGATION, CrawlConfig, SitemapCrawler, normalize_url, parse_html_page,
+    LOCATION_CONTENT, LOCATION_NAVIGATION, CrawlConfig, CrawlResult, SitemapCrawler, normalize_url, parse_html_page,
+    same_site,
 )
+from src.workflows.site_audit import audit_site
 
 QUIRKY_HTML = """<html><head><TITLE>Hello &amp; World</TITLE>
 <meta name=Description content=" A  description ">
@@ -60,8 +75,129 @@ class TestExtractor(unittest.TestCase):
 
     def test_normalize_url(self):
         self.assertEqual(normalize_url(" HTTPS://Site.Example/a/#x "), "https://site.example/a/")
+        self.assertEqual(normalize_url("https://user:pw@Site.Example:443/a"), "https://user:pw@site.example/a")
 
 
+class TestExtractorEdgeCases(unittest.TestCase):
+    """HTML quirks found on real sites."""
+
+    def test_lang_and_base_href(self):
+        page = parse_html_page("https://site.example/x/", "<html lang=' PT-BR '><head><base href='/blog/'></head>"
+                                                          "<p><a href='post/'>a relative post link</a></p></html>")
+        self.assertEqual(page.lang, "pt-br")
+        self.assertEqual(page.existing_internal_links, ["https://site.example/blog/post/"])
+
+    def test_robots_meta_googlebot_header_and_none(self):
+        page = parse_html_page("https://site.example/", "<meta name='googlebot' content='NOINDEX'>", x_robots_tag="nofollow")
+        self.assertEqual(page.meta_robots, "noindex, nofollow")
+        self.assertTrue(page.noindex and page.nofollow)
+        self.assertFalse(page.indexable)
+        none = parse_html_page("https://site.example/", "<meta name='robots' content='none'>")
+        self.assertTrue(none.noindex and none.nofollow)
+
+    def test_line_breaks_and_sponsored_links(self):
+        page = parse_html_page("https://site.example/", "<p>Line one<br>line two, <a href='/ad/' rel='Sponsored'>"
+                                                        "a sponsored link</a> here.</p>")
+        self.assertEqual(page.paragraphs, ["Line one line two, a sponsored link here."])
+        self.assertTrue(page.links[0].nofollow)
+
+    def test_self_closing_and_stray_boilerplate_tags_do_not_swallow_content(self):
+        page = parse_html_page("https://site.example/", "</script><nav/><aside/>"
+                                                        "<p><a href='/x/'>a content link in the text</a></p>")
+        self.assertEqual([(l.location, l.anchor_text) for l in page.links], [(LOCATION_CONTENT, "a content link in the text")])
+
+    def test_skipped_regions_nest_and_hide_their_markup(self):
+        page = parse_html_page("https://site.example/", "<noscript><p>Hidden paragraph text in noscript.</p></noscript>"
+                                                        "<template><svg><p>inside</p></template>"
+                                                        "<p>Visible paragraph after the template.</p>")
+        self.assertEqual(page.paragraphs, ["Visible paragraph after the template."])
+
+
+class TestFetcherDecoding(unittest.TestCase):
+    def test_deflate_raw_deflate_and_gzip_by_magic_bytes(self):
+        raw = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+        raw_deflate = raw.compress(b"hello") + raw.flush()
+        self.assertEqual(_decode_body(zlib.compress(b"hello"), "deflate", ""), b"hello")
+        self.assertEqual(_decode_body(raw_deflate, "deflate", ""), b"hello")
+        self.assertEqual(_decode_body(gzip.compress(b"hello"), "", "application/gzip"), b"hello")
+        self.assertEqual(_decode_body(b"plain", "identity", "text/html"), b"plain")
+
+    def test_connection_dropped_mid_body_is_a_network_error(self):
+        headers = Message()
+        headers["Content-Type"] = "text/html"
+        response = mock.MagicMock(status=200, headers=headers)
+        response.__enter__.return_value = response
+        response.read.side_effect = ConnectionResetError("peer reset")
+        fetcher = HttpFetcher(retries=0)
+        with mock.patch.object(fetcher._opener, "open", return_value=response):
+            result = fetcher.fetch("https://x.example/")
+        self.assertEqual((result.status, result.error, result.body), (0, "read failed: peer reset", ""))
+
+    def test_fetcher_is_callable(self):
+        fetcher = HttpFetcher()
+        with mock.patch.object(fetcher, "fetch", return_value="result") as fetch:
+            self.assertEqual(fetcher("https://x.example/"), "result")
+        fetch.assert_called_once_with("https://x.example/")
+
+    def test_fetch_url_helper_passes_its_settings(self):
+        from src.connectors import sitemap_crawler
+        with mock.patch.object(sitemap_crawler, "HttpFetcher") as fetcher_cls:
+            sitemap_crawler.fetch_url("https://x.example/", timeout=3, user_agent="bot")
+        fetcher_cls.assert_called_once_with(timeout=3, user_agent="bot")
+        fetcher_cls.return_value.fetch.assert_called_once_with("https://x.example/")
+
+
+class FakeFetcher:
+    """In-memory stand-in for HttpFetcher.fetch: path -> (status, content type, body)."""
+
+    def __init__(self, base: str, routes):
+        self.base, self.routes, self.requests = base, routes, []
+
+    def __call__(self, url: str):
+        self.requests.append(url)
+        status, content_type, body = self.routes.get(url[len(self.base):], (404, "text/html", ""))
+        return FetchResult(url, url, status, content_type, body, raw=body.encode())
+
+
+class TestCrawlerWithFakeFetcher(unittest.TestCase):
+    """Crawl logic without HTTP (the crawler accepts any fetcher)."""
+
+    BASE = "https://site.example"
+    HOME = (200, "text/html", "<title>Home</title><p><a href='/a/'>the a page</a></p>")
+
+    def crawl(self, routes, **config):
+        fetcher = FakeFetcher(self.BASE, routes)
+        result = SitemapCrawler(self.BASE + "/", fetcher=fetcher, config=CrawlConfig(**config)).crawl()
+        return result, fetcher
+
+    def test_invalid_sitemap_xml_is_a_warning_not_a_crash(self):
+        routes = {"/": self.HOME, "/a/": (200, "text/html", "<title>A</title>"),
+                  "/sitemap.xml": (200, "application/xml", "<urlset><url><loc>broken")}
+        with self.assertLogs("seo_magus.connectors.crawling.crawler", "WARNING") as logs:
+            result, _ = self.crawl(routes)
+        self.assertIn("is not valid XML", logs.output[0])
+        self.assertEqual((result.sitemap_found, result.sitemap_urls), (False, []))
+        self.assertEqual([p.url for p in result.pages], [self.BASE + "/", self.BASE + "/a/"])
+
+    def test_sitemap_index_cycles_are_read_once(self):
+        index = ("<sitemapindex><sitemap><loc>https://site.example/sitemap.xml</loc></sitemap>"
+                 "<sitemap><loc>https://site.example/pages.xml</loc></sitemap></sitemapindex>")
+        routes = {"/": self.HOME, "/a/": (200, "text/html", "<title>A</title>"),
+                  "/sitemap.xml": (200, "application/xml", index),
+                  "/pages.xml": (200, "application/xml", "<urlset><url><loc>https://site.example/a/</loc></url></urlset>")}
+        result, fetcher = self.crawl(routes)
+        self.assertTrue(result.sitemap_found)
+        self.assertEqual(result.sitemap_urls, [self.BASE + "/a/"])
+        self.assertEqual(fetcher.requests.count(self.BASE + "/sitemap.xml"), 1)
+
+    def test_external_check_without_external_links_requests_nothing(self):
+        result, fetcher = self.crawl({"/": self.HOME, "/a/": (200, "text/html", "<title>A</title>")},
+                                     check_external=True)
+        self.assertEqual(result.external_statuses, {})
+        self.assertTrue(all(url.startswith(self.BASE) for url in fetcher.requests))
+
+
+@pytest.mark.integration
 class TestMockSiteScan(unittest.TestCase):
     """The crawler must see exactly what the mock sites contain."""
 
@@ -121,6 +257,7 @@ class TestMockSiteScan(unittest.TestCase):
         self.assertEqual(good.page(PRODUCTION_BASE + "/about/").canonical, PRODUCTION_BASE + "/about/")
 
 
+@pytest.mark.integration
 class TestCrawlerBehaviour(unittest.TestCase):
     def _site(self, files):
         tmp = tempfile.TemporaryDirectory()
@@ -172,6 +309,45 @@ class TestCrawlerBehaviour(unittest.TestCase):
         self.assertEqual(result.pages, [])
         self.assertEqual(result.statuses, {"http://127.0.0.1:9/": 0})
 
+    def test_mock_server_rewrites_text_only_and_never_leaves_its_root(self):
+        site = self._site({
+            "index.html": "<p>Home of https://greenleaf.example/</p>",
+            "logo.png": "PNG https://greenleaf.example/",
+            "_redirects": "/old /index.html 302\n# comment line\n",
+        })
+        with MockSiteServer(site) as server:
+            connection = http.client.HTTPConnection(server.base_url[len("http://"):], timeout=5)
+
+            def get(path):
+                connection.request("GET", path)   # no Accept-Encoding: the server must answer uncompressed
+                response = connection.getresponse()
+                return response.status, response.getheader("Content-Type"), response.getheader("Location"), response.read()
+
+            home, logo = get("/"), get("/logo.png")
+            traversal, rules, redirect = get("/%2e%2e/%2e%2e/Makefile"), get("/_redirects"), get("/old")
+            connection.close()
+            encodings = server.encodings
+        self.assertEqual((home[0], home[3]), (200, f"<p>Home of {server.base_url}/</p>".encode()))
+        self.assertEqual((logo[1], logo[3]), ("image/png", b"PNG https://greenleaf.example/"))  # binary: untouched
+        self.assertEqual((traversal[0], rules[0]), (404, 404))
+        self.assertEqual((redirect[0], redirect[2]), (302, "/index.html"))
+        self.assertEqual(encodings, ["identity", "identity"])
+
+    def test_unknown_mock_site_is_a_clear_error(self):
+        with self.assertRaisesRegex(FileNotFoundError, "Unknown mock site 'nope'; available: \\['greenleaf-good'"):
+            MockSiteServer("nope")
+
+    def test_mock_site_module_entry_point(self):
+        class InterruptedEvent:
+            def wait(self):
+                raise KeyboardInterrupt
+
+        out = io.StringIO()
+        with mock.patch.object(mock_sites, "threading", mock.Mock(Event=InterruptedEvent, Thread=threading.Thread)), \
+                mock.patch("sys.argv", ["mock_sites", mock_sites.GOOD_SITE, "--port", "0"]), redirect_stdout(out):
+            mock_sites.main()
+        self.assertRegex(out.getvalue(), r"Serving greenleaf-good at http://127\.0\.0\.1:\d+/")
+
     def test_rebase(self):
         crawl = crawl_mock_site(mock_sites.GOOD_SITE).result
         back = crawl.rebase(PRODUCTION_BASE, "https://staging.example")
@@ -179,25 +355,9 @@ class TestCrawlerBehaviour(unittest.TestCase):
         self.assertTrue(all(u.startswith("https://staging.example/") for p in back.pages for u in p.existing_internal_links))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 # ---------------------------------------------------------------------------
 # Crawler features, each exercised against a small real HTTP server
 # ---------------------------------------------------------------------------
-
-import gzip
-import io
-import threading
-import time
-from contextlib import redirect_stdout
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-from src import cli
-from src.connectors.crawling.fetcher import HttpFetcher, RateLimiter
-from src.connectors.sitemap_crawler import CrawlResult, same_site
-from src.workflows.site_audit import audit_site
 
 
 class RouteServer:
@@ -206,6 +366,8 @@ class RouteServer:
     def __init__(self, routes, delay: float = 0.0):
         self.routes, self.requests, self.delay = routes, [], delay
         self.counts = {}
+        self.in_flight = self.max_in_flight = 0     # concurrent requests being answered (proves parallelism)
+        self._lock = threading.Lock()
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -213,10 +375,17 @@ class RouteServer:
                 pass
 
             def _answer(self, send_body: bool):
-                outer.requests.append((self.command, self.path))
-                outer.counts[self.path] = outer.counts.get(self.path, 0) + 1
-                if outer.delay:
-                    time.sleep(outer.delay)
+                with outer._lock:
+                    outer.requests.append((self.command, self.path))
+                    outer.counts[self.path] = outer.counts.get(self.path, 0) + 1
+                    outer.in_flight += 1
+                    outer.max_in_flight = max(outer.max_in_flight, outer.in_flight)
+                try:
+                    if outer.delay:
+                        time.sleep(outer.delay)
+                finally:
+                    with outer._lock:
+                        outer.in_flight -= 1
                 route = outer.routes.get(self.path, (404, {}, "<h1>Not found</h1>"))
                 status, headers, body = route(outer.counts[self.path]) if callable(route) else route
                 data = body.encode("utf-8") if isinstance(body, str) else body
@@ -252,6 +421,7 @@ def page(title, *links, body=""):
     return f"<html><head><title>{title}</title></head><body><h1>{title}</h1>{body}{anchors}</body></html>"
 
 
+@pytest.mark.integration
 class ServerTestCase(unittest.TestCase):
     def serve(self, routes, delay=0.0) -> RouteServer:
         server = RouteServer(routes, delay)
@@ -285,7 +455,8 @@ class TestCrawlConfig(unittest.TestCase):
         self.assertEqual((config.max_pages, config.exclude, config.delay), (50, ("^/tag/",), 0.5))
         for bad in ({"crawler": {"max_page": 5}}, {"crawler": {"max_pages": 0}}, {"crawler": {"exclude": "^/x"}},
                     {"crawler": {"include": ["(unclosed"]}}, {"crawler": {"concurrency": True}},
-                    {"crawler": {"max_depth": -1}}):
+                    {"crawler": {"max_depth": -1}}, {"crawler": {"delay": -1}}, {"crawler": {"timeout": 0}},
+                    {"crawler": ["max_pages", 5]}):
             with self.subTest(config=bad), self.assertRaises(ValueError):
                 CrawlConfig.from_config(bad)
 
@@ -370,18 +541,21 @@ class TestCrawlerFeatures(ServerTestCase):
         self.assertEqual(result.page(server.url + "/big/").content_bytes, 2048)
 
     def test_concurrency_is_parallel_and_deterministic(self):
+        # Parallelism is asserted on the server side (requests in flight at the same time),
+        # not with wall-clock ratios that flake on a loaded machine or under coverage tracing.
         routes = {"/": (200, {}, page("Home", *[(f"/p{i}/", f"page {i}") for i in range(8)]))}
         routes.update({f"/p{i}/": (200, {}, page(f"P{i}", ("/", "home"))) for i in range(8)})
-        server = self.serve(routes, delay=0.05)
-        started = time.perf_counter()
-        serial = self.crawl(server, concurrency=1, respect_robots=False)
-        serial_time = time.perf_counter() - started
-        started = time.perf_counter()
-        parallel = self.crawl(server, concurrency=8, respect_robots=False)
-        parallel_time = time.perf_counter() - started
-        self.assertLess(parallel_time, serial_time * 0.7)
-        self.assertEqual([p.url for p in parallel.pages], [p.url for p in serial.pages])
-        self.assertEqual([p.existing_internal_links for p in parallel.pages], [p.existing_internal_links for p in serial.pages])
+        serial_server, parallel_server = self.serve(routes, delay=0.05), self.serve(routes, delay=0.05)
+        serial = self.crawl(serial_server, concurrency=1, respect_robots=False)
+        parallel = self.crawl(parallel_server, concurrency=8, respect_robots=False)
+        self.assertEqual(serial_server.max_in_flight, 1)
+        self.assertGreater(parallel_server.max_in_flight, 1)
+        def shape(result, base):   # page order and links, independent of the server's port
+            strip = lambda url: url[len(base):]
+            return [(strip(p.url), [strip(u) for u in p.existing_internal_links]) for p in result.pages]
+
+        self.assertEqual(shape(parallel, parallel_server.url), shape(serial, serial_server.url))
+        self.assertEqual(len(serial.pages), 9)
 
     def test_politeness_delay_and_robots_crawl_delay(self):
         limiter = RateLimiter(0.05)
@@ -423,12 +597,20 @@ class TestCrawlerFeatures(ServerTestCase):
         self.assertEqual(loaded, crawl)
         self.assertEqual(audit_site(loaded).issue_keys(), audit_site(crawl).issue_keys())
 
+    def test_redirect_limit_stops_long_chains(self):
+        server = self.serve({f"/r{i}": (301, {"Location": f"/r{i + 1}"}, "") for i in range(6)})
+        result = HttpFetcher(timeout=5, retries=0, max_redirects=2).fetch(server.url + "/r0")
+        self.assertEqual((result.status, result.error), (301, "more than 2 redirects"))
+        self.assertEqual([hop for hop, _ in result.redirect_chain], [server.url + f"/r{i}" for i in range(3)])
+        self.assertEqual(len(server.requests), 3)  # stopped: /r3 is never requested
+
     def test_fetcher_head_falls_back_to_get(self):
         server = self.serve({"/x": lambda n: (405, {}, "") if server.requests[-1][0] == "HEAD" else (200, {}, "ok")})
         self.assertEqual(HttpFetcher(timeout=5, retries=0).head(server.url + "/x").status, 200)
         self.assertEqual([m for m, _ in server.requests], ["HEAD", "GET"])
 
 
+@pytest.mark.integration
 class TestCrawlCommand(unittest.TestCase):
     def test_crawl_save_and_audit_from_saved_crawl(self):
         with MockSiteServer(mock_sites.SCRAMBLED_SITE) as server, tempfile.TemporaryDirectory() as tmp:
@@ -444,3 +626,7 @@ class TestCrawlCommand(unittest.TestCase):
                 cli.main(["audit", "--from-crawl", str(saved), "--config", "config/sites/greenleaf.yaml"])
             self.assertIn("Loaded saved crawl", out.getvalue())
             self.assertIn("Links proposed             : 16", out.getvalue())
+
+
+if __name__ == "__main__":
+    unittest.main()

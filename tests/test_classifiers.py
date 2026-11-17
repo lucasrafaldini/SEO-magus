@@ -9,6 +9,9 @@ import threading
 import unittest
 import warnings
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest import mock
+
+import pytest
 
 from src.benchmarks import mock_sites
 from src.config import SiteConfig, load_site_config
@@ -63,6 +66,7 @@ def openai_reply(content):
     return lambda path, body: (200, {"choices": [{"message": {"role": "assistant", "content": content}}]})
 
 
+@pytest.mark.integration
 class ProviderTestCase(unittest.TestCase):
     def provider(self, reply) -> FakeProvider:
         fake = FakeProvider(reply)
@@ -94,13 +98,13 @@ class TestConfiguration(unittest.TestCase):
         self.assertEqual(ClassifierConfig().provider, "auto")
         self.assertEqual(ClassifierConfig.from_config({"classifier": {"provider": "Ollama"}}).provider, "ollama")
         for bad in ({"classifier": {"provider": "skynet"}}, {"classifier": {"fallback": "retry"}},
-                    {"classifier": {"model_name": "x"}}, {"classifier": {"timeout": 0}}):
+                    {"classifier": {"model_name": "x"}}, {"classifier": {"timeout": 0}}, {"classifier": ["openai"]}):
             with self.subTest(config=bad), self.assertRaises(ValueError):
                 ClassifierConfig.from_config(bad)
 
     def test_api_keys_are_never_read_from_config(self):
-        with self.assertRaisesRegex(ValueError, "api_key_env"):
-            ClassifierConfig.from_config({"classifier": {"provider": "openai", "api_key": "sk-secret"}})
+        with self.assertRaisesRegex(ValueError, "Do not put API keys in config files; set classifier.api_key_env"):
+            ClassifierConfig.from_config({"classifier": {"provider": "openai", "api_key": "placeholder-value"}})
 
     def test_site_configs_choose_their_classifier(self):
         self.assertEqual(load_site_config("config/sites/greenleaf.yaml").classifier.provider, "heuristic")
@@ -165,15 +169,64 @@ class TestFactory(unittest.TestCase):
         with self.assertLogs("seo_magus.engines.classifiers.factory", "WARNING"):
             self.assertEqual(exploding.evaluate(CANDIDATE).provider, "heuristic (fallback)")
 
+    def test_plugin_results_are_validated(self):
+        plugin = lambda name: self.build(provider=f"python:tests.classifier_plugin:{name}", fallback="none")
+        self.assertEqual(plugin("JudgementClassifier").evaluate(CANDIDATE),
+                         LinkJudgement(True, 0.9, 8.0, "JudgementClassifier"))
+        with self.assertRaisesRegex(ClassifierError, "quota exceeded"):
+            plugin("Refusing").evaluate(CANDIDATE)
+        with self.assertRaisesRegex(ClassifierError, "returned {'relevant': True, 'score': 8}"):
+            plugin("IncompleteDict").evaluate(CANDIDATE)
+        with self.assertRaisesRegex(ClassifierError, "returned str, expected LinkJudgement or dict"):
+            plugin("WrongType").evaluate(CANDIDATE)
+
+    def test_fallback_warnings_are_rate_limited(self):
+        classifier = build_classifier(ClassifierConfig(provider="python:tests.classifier_plugin:Refusing"), environ={})
+        with self.assertLogs("seo_magus.engines.classifiers.factory", "DEBUG") as logs:
+            for _ in range(FallbackClassifier.WARN_FIRST + 2):
+                self.assertEqual(classifier.evaluate(CANDIDATE).provider, "heuristic (fallback)")
+        levels = [line.split(":", 1)[0] for line in logs.output]
+        self.assertEqual(levels, ["WARNING"] * FallbackClassifier.WARN_FIRST + ["DEBUG"] * 2)
+        self.assertIn("further failures logged at DEBUG", logs.output[FallbackClassifier.WARN_FIRST - 1])
+        self.assertEqual(classifier.fallbacks, FallbackClassifier.WARN_FIRST + 2)
+        self.assertIn("falling back to heuristic on errors", classifier.describe())
+
+
+class TestProviderValidation(unittest.TestCase):
+    """Provider objects check their settings and answers without any HTTP."""
+
+    def test_llm_providers_need_a_base_url_and_a_model(self):
+        with self.assertRaisesRegex(ValueError, "needs a base_url"):
+            OpenAICompatibleClassifier("openai", "", "m")
+        with self.assertRaisesRegex(ValueError, "needs a model name"):
+            AnthropicClassifier("anthropic", "https://api.example/v1", "")
+
+    def test_malformed_anthropic_answer_is_a_classifier_error(self):
+        classifier = AnthropicClassifier("anthropic", "https://api.example/v1", "claude-model")
+        with mock.patch("src.engines.classifiers.llm.post_json", return_value={"content": "not a list of blocks"}) as post, \
+                self.assertRaisesRegex(ClassifierError, "unexpected response shape"):
+            classifier.evaluate(CANDIDATE)
+        headers = post.call_args.args[2]
+        self.assertNotIn("x-api-key", headers)  # no key configured: the header is omitted
+
+    def test_unexpected_jev_response_is_a_classifier_error(self):
+        client = mock.Mock(mock_mode=False, base_url="https://jev.example")
+        client.evaluate_link_candidate.return_value = {"results": {"relevance_score": {"score": 8}}}
+        classifier = JevClassifier(client=client)
+        with self.assertRaisesRegex(ClassifierError, "unexpected Jev response"):
+            classifier.evaluate(CANDIDATE)
+        self.assertEqual(classifier.describe(), "jev (https://jev.example)")
+        self.assertEqual(JevClassifier(base_url="https://jev.example/v1").client.base_url, "https://jev.example/v1")
+
 
 class TestHttpProviders(ProviderTestCase):
     def test_openai_compatible_request_and_answer(self):
         fake = self.provider(openai_reply('{"relevant": true, "confidence": 0.91, "score": 8}'))
-        classifier = OpenAICompatibleClassifier("ollama", fake.url + "/v1", "llama3.2:3b", api_key="secret")
+        classifier = OpenAICompatibleClassifier("ollama", fake.url + "/v1", "llama3.2:3b", api_key="placeholder")
         self.assertEqual(classifier.evaluate(CANDIDATE), LinkJudgement(True, 0.91, 8.0, "ollama"))
         (request,) = fake.requests
         self.assertEqual(request["path"], "/v1/chat/completions")
-        self.assertEqual(request["headers"]["authorization"], "Bearer secret")
+        self.assertEqual(request["headers"]["authorization"], "Bearer placeholder")
         body = request["body"]
         self.assertEqual((body["model"], body["temperature"]), ("llama3.2:3b", 0.0))
         self.assertEqual([m["role"] for m in body["messages"]], ["system", "user"])

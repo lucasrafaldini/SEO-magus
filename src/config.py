@@ -69,9 +69,10 @@ class Thresholds:
     @classmethod
     def from_config(cls, config: Optional[Mapping[str, Any]]) -> "Thresholds":
         """Build from a parsed config dict; missing keys keep their defaults."""
-        section = dict((config or {}).get("thresholds") or {})
-        if not isinstance((config or {}).get("thresholds") or {}, Mapping):
+        raw = (config or {}).get("thresholds") or {}
+        if not isinstance(raw, Mapping):
             raise ValueError("config 'thresholds' must be a mapping")
+        section = dict(raw)
         for legacy, current in LEGACY_THRESHOLD_KEYS.items():
             if legacy in section:
                 if current in section:

@@ -11,9 +11,12 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
+import pytest
+
 from src import cli
 from src.config import (
     DEFAULT_THRESHOLDS,
+    LinkRules,
     SiteConfig,
     Thresholds,
     load_config,
@@ -84,6 +87,23 @@ class TestThresholds(unittest.TestCase):
     def test_unknown_key_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "min_score_minimum"):
             Thresholds.from_config({"thresholds": {"min_score_minimum": 8}})
+
+    def test_sections_must_be_mappings(self):
+        # Regression: a scalar section used to crash with TypeError instead of a clear ValueError.
+        for section in (5, "min_score: 8", ["min_score"]):
+            with self.subTest(section=section):
+                with self.assertRaisesRegex(ValueError, "config 'thresholds' must be a mapping"):
+                    Thresholds.from_config({"thresholds": section})
+                with self.assertRaisesRegex(ValueError, "config 'link_rules' must be a mapping"):
+                    LinkRules.from_config({"link_rules": section})
+
+    def test_non_mapping_section_in_a_file_exits_cleanly(self):
+        path = _write(self, "thresholds: 5\n")
+        with self.assertRaises(SystemExit) as exit_info, self.assertLogs("seo_magus.cli", "ERROR") as logs, \
+                redirect_stdout(io.StringIO()):
+            cli.main(["boost-page2", "--config", str(path)])
+        self.assertEqual(exit_info.exception.code, 2)
+        self.assertIn("config 'thresholds' must be a mapping", logs.output[0])
 
     def test_invalid_values_are_rejected(self):
         for bad in (
@@ -236,6 +256,7 @@ class TestCliWiring(unittest.TestCase):
         _, output = self._main("boost-page2")
         self.assertIn(">= 50 impressions", output)
 
+    @pytest.mark.integration  # the crawled benchmark sites are served over HTTP
     def test_benchmark_uses_each_sites_own_config(self):
         from src.benchmarks import BENCHMARKS, run_benchmark
         runs = []

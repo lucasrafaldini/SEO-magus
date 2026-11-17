@@ -1,0 +1,18 @@
+# Coverage of src/ (make coverage / make ci). Branch coverage: a missed `else` counts.
+[run]
+source = src
+branch = True
+# Worker threads (crawler, mock servers) are traced too.
+concurrency = thread
+
+[report]
+show_missing = True
+skip_covered = True
+precision = 1
+exclude_also =
+    if __name__ == .__main__.:
+    raise NotImplementedError
+
+[html]
+directory = build/coverage
+title = SEO-Magus coverage

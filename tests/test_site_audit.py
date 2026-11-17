@@ -5,12 +5,15 @@ the scrambled site must show exactly the problems planted in it.
 
 import unittest
 
+import pytest
+
 from src.benchmarks import mock_sites
 from src.benchmarks.mock_sites import EXPECTED_ISSUES, PRODUCTION_BASE, crawl_mock_site
 from src.connectors.sitemap_crawler import CrawlResult, parse_html_page
 from src.workflows.site_audit import ERROR, ISSUE_SEVERITY, NOTICE, WARNING, audit_site
 
 
+@pytest.mark.integration
 class TestMockSiteAudit(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -73,6 +76,48 @@ class TestAuditRules(unittest.TestCase):
         generic = [i.detail for i in audit_site(crawl).issues if i.code == "generic_anchor"]
         self.assertEqual(len(generic), 2)
         self.assertTrue(any("Click here!" in d for d in generic) and any("saiba mais" in d for d in generic))
+
+    def test_canonical_to_a_broken_url_is_an_error(self):
+        crawl = self._crawl({
+            "https://x.example/": "<title>Home</title><h1>Home</h1><p><a href='/dup/'>duplicate page</a></p>",
+            "https://x.example/dup/": "<title>Dup</title><h1>Dup</h1><link rel='canonical' href='/gone/'>",
+        })
+        crawl.statuses["https://x.example/gone/"] = 404
+        issues = {(i.code, i.url): i for i in audit_site(crawl).issues}
+        broken = issues[("canonical_broken", "https://x.example/dup/")]
+        self.assertEqual(broken.severity, ERROR)
+        self.assertIn("answers HTTP 404", broken.detail)
+        self.assertEqual(issues[("canonicalized_page", "https://x.example/dup/")].severity, NOTICE)
+        # A canonicalized duplicate is not indexable: no on-page checks for it.
+        self.assertNotIn(("missing_meta_description", "https://x.example/dup/"), issues)
+
+    def test_canonical_to_a_working_url_is_only_a_notice(self):
+        crawl = self._crawl({
+            "https://x.example/": "<title>Home</title><h1>Home</h1><p><a href='/dup/'>duplicate page</a></p>",
+            "https://x.example/dup/": "<title>Dup</title><h1>Dup</h1><link rel='canonical' href='/'>",
+        })
+        codes = {i.code for i in audit_site(crawl).issues if i.url == "https://x.example/dup/"}
+        self.assertEqual(codes, {"canonicalized_page"})
+
+    def test_slow_pages_use_the_configured_threshold(self):
+        crawl = self._crawl({"https://x.example/": "<title>Home</title><h1>Home</h1>"})
+        crawl.pages[0].response_ms = 2500.0
+        slow = [i for i in audit_site(crawl).issues if i.code == "slow_page"]
+        self.assertEqual([(i.severity, i.detail) for i in slow], [(NOTICE, "answered in 2500 ms (max 2000)")])
+        self.assertFalse([i for i in audit_site(crawl, slow_page_ms=3000).issues if i.code == "slow_page"])
+        # Notices never make a page unhealthy.
+        self.assertEqual(audit_site(crawl).unhealthy_pages, set())
+
+    def test_uncrawled_start_page_leaves_every_depth_unknown(self):
+        crawl = self._crawl({
+            "https://x.example/a/": "<title>A</title><h1>A</h1><p><a href='/b/'>page b</a></p>",
+            "https://x.example/b/": "<title>B</title><h1>B</h1><p><a href='/a/'>page a</a></p>",
+        })
+        crawl.start_url = "https://x.example/"   # answered with an error: not among the pages
+        audit = audit_site(crawl)
+        self.assertEqual(audit.click_depths, {"https://x.example/a/": None, "https://x.example/b/": None})
+        self.assertEqual({i.url for i in audit.issues if i.code == "unreachable_page"},
+                         {"https://x.example/a/", "https://x.example/b/"})
 
 
 if __name__ == "__main__":

@@ -51,3 +51,31 @@ def sample_site_pages() -> List[ParsedPage]:
             existing_internal_links=[],
         ),
     ]
+
+
+DEMO_START = "https://example.com/guides/email-marketing-mastery"
+_NAVIGATION = (("https://example.com/guides/email-marketing-mastery", "Guide"), ("https://example.com/pricing", "Pricing"))
+
+
+def sample_crawl():
+    """
+    The demo pages as a crawler would record them, so the demo runs the site audit too:
+    one content link (the sequence guide cites the welcome email template), a header
+    navigation to the guide and pricing on every page, one <h1> each, no meta
+    descriptions, every page in the sitemap. The guide is the start page.
+    """
+    from dataclasses import replace
+
+    from src.connectors.crawling.crawler import CrawlResult
+    from src.connectors.crawling.html_extract import LOCATION_CONTENT, LOCATION_NAVIGATION, PageLink
+
+    pages = []
+    for page in sample_site_pages():
+        links = [PageLink(url, anchor, LOCATION_NAVIGATION, True) for url, anchor in _NAVIGATION if url != page.url]
+        for target in page.existing_internal_links:
+            anchor = "welcome email template" if target.endswith("welcome-email-template") else target.rsplit("/", 1)[-1]
+            links.append(PageLink(target, anchor, LOCATION_CONTENT, True))
+        pages.append(replace(page, links=links, h1_count=1, depth=0 if page.url == DEMO_START else None))
+    urls = [page.url for page in pages]
+    return CrawlResult(start_url=DEMO_START, pages=pages, sitemap_urls=urls, sitemap_found=True,
+                       statuses={url: 200 for url in urls}, redirects={}, robots_blocked=[])

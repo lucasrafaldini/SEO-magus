@@ -21,3 +21,29 @@ class NoEvaluate:
 class Exploding:
     def evaluate(self, candidate):
         raise RuntimeError("model crashed")
+
+
+class JudgementClassifier:
+    """Returns a LinkJudgement without a provider name (the adapter fills in the class name)."""
+
+    def evaluate(self, candidate):
+        from src.engines.classifiers import LinkJudgement
+        return LinkJudgement(True, 0.9, 8.0)
+
+
+class Refusing:
+    """Raises ClassifierError itself (passed through unchanged, so the fallback policy applies)."""
+
+    def evaluate(self, candidate):
+        from src.engines.classifiers import ClassifierError
+        raise ClassifierError("quota exceeded")
+
+
+class IncompleteDict:
+    def evaluate(self, candidate):
+        return {"relevant": True, "score": 8}          # no confidence
+
+
+class WrongType:
+    def evaluate(self, candidate):
+        return "yes"

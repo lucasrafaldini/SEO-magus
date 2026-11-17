@@ -88,12 +88,12 @@ class ClassifierConfig:
         section = (config or {}).get("classifier") or {}
         if not isinstance(section, Mapping):
             raise ValueError("config 'classifier' must be a mapping")
+        if "api_key" in section:  # never accept secrets in config files (checked first: clearer than "unknown")
+            raise ValueError("Do not put API keys in config files; set classifier.api_key_env instead")
         names = [f.name for f in fields(cls)]
         unknown = sorted(set(section) - set(names))
         if unknown:
             raise ValueError(f"Unknown classifier settings {unknown}; expected some of {names}")
-        if "api_key" in section:  # defensive: never accept secrets in config files
-            raise ValueError("Do not put API keys in config files; set classifier.api_key_env instead")
         return cls(**section)
 
 

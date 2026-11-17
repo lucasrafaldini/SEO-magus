@@ -13,6 +13,8 @@ from pathlib import Path
 from unittest import mock
 from urllib.error import URLError
 
+import pytest
+
 from src import cli
 from src.connectors.sitemap_crawler import SitemapCrawler
 from src.engines import link_graph as link_graph_module
@@ -53,6 +55,7 @@ class TestConfiguration(LoggingTestCase):
         with mock.patch.dict(os.environ, {"SEO_MAGUS_LOG_LEVEL": "debug"}):
             self.assertEqual(resolve_level(None), logging.DEBUG)
             self.assertEqual(resolve_level("error"), logging.ERROR)
+        self.assertEqual(resolve_level(logging.INFO), logging.INFO)  # numeric levels pass through
         with self.assertRaises(ValueError):
             resolve_level("LOUD")
 
@@ -90,7 +93,7 @@ class TestWorkflowEvents(LoggingTestCase):
         self.assertEqual(text.count("DEBUG:seo_magus.workflows.linking_optimizer:Decision "), 12)  # 4 x 3 pairs
 
     def test_jev_api_failure_is_a_warning(self):
-        client = JevClient(api_key="secret")
+        client = JevClient(api_key="placeholder")
         with mock.patch("src.engines.jev_client.urlopen", side_effect=URLError("offline")), \
                 self.assertLogs(f"{ROOT}.engines.jev_client", "WARNING") as logs:
             result = client.evaluate_link_candidate("s", "text", "t", "Title", "Topic")
@@ -110,6 +113,7 @@ class TestWorkflowEvents(LoggingTestCase):
         self.assertEqual(len(logs.output), 1)
         self.assertIn("pure-Python backend", logs.output[0])
 
+    @pytest.mark.integration  # crawls the mock site over HTTP
     def test_crawl_and_site_audit_are_logged(self):
         from src.benchmarks.mock_sites import SCRAMBLED_SITE, crawl_mock_site
         from src.workflows.site_audit import audit_site
@@ -154,3 +158,36 @@ class TestCliLogging(LoggingTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRunContextAndProgress(LoggingTestCase):
+    def test_make_run_id_is_named_once_and_the_line_format_never_changes(self):
+        with mock.patch.dict(os.environ, {"SEO_MAGUS_RUN_ID": "20260101T000000Z-abcd"}):
+            stream = io.StringIO()
+            configure_logging("INFO", stream=stream)
+            get_logger("src.test").info("inside a make step")
+            command = self._cli_log("-v", "boost-page2")
+        self.assertIn("INFO    seo_magus.test: inside a make step", stream.getvalue())     # same format as ever
+        self.assertIn("seo_magus.cli: Command: boost-page2 (make run 20260101T000000Z-abcd)", command)
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertIn("Command: boost-page2\n", self._cli_log("-v", "boost-page2"))
+
+    def _cli_log(self, *argv):
+        stream = io.StringIO()
+        real_configure = configure_logging
+        with mock.patch("src.cli.configure_logging", side_effect=lambda level, log_file: real_configure(level, log_file, stream)), \
+                mock.patch("sys.stdout", io.StringIO()):
+            cli.main(list(argv))
+        return stream.getvalue()
+
+    def test_large_runs_log_progress_not_every_page(self):
+        from src.connectors.sitemap_crawler import ParsedPage
+        pages = [ParsedPage(f"https://x.example/p{i}", f"Page {i} Topic", f"Page {i} Topic", [f"Read about page {i + 1} topic."])
+                 for i in range(40)]
+        with self.assertLogs(f"{ROOT}.workflows.linking_optimizer", "INFO") as logs:
+            LinkingOptimizer().run_optimization(pages)
+        info = [line for line in logs.output if line.startswith("INFO")]
+        progress = [line for line in info if "Link search" in line]
+        self.assertEqual(len(progress), 9)                                # 10%, 20%, ... 90% (100% = "finished")
+        self.assertIn("Link search 10% (4/40 source pages)", progress[0])
+        self.assertFalse([line for line in info if "Source " in line or "Link approved" in line])

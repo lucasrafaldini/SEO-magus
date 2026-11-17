@@ -1,0 +1,863 @@
+{
+ "start_url": "https://greenleaf.example/",
+ "pages": [
+  {
+   "url": "https://greenleaf.example/",
+   "title": "GreenLeaf Gardening",
+   "h1": "Grow Better Soil and Better Vegetables",
+   "paragraphs": [
+    "Welcome to GreenLeaf. Start with our complete composting guide or plan your first plot with the vegetable gardening guide.",
+    "Every method on this site is tried first by the GreenLeaf gardeners in their own beds.",
+    "Background reading: compost on Wikipedia explains the science behind it."
+   ],
+   "existing_internal_links": [],
+   "meta_description": "",
+   "links": [
+    {
+     "url": "https://greenleaf.example/about/",
+     "anchor_text": "About",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://en.wikipedia.org/wiki/Compost",
+     "anchor_text": "compost on Wikipedia",
+     "location": "content",
+     "internal": false,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/shop/compost-tumbler",
+     "anchor_text": "Compost Tumbler",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "https://greenleaf.example/shop/compost-tumbler/",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/private/drafts/",
+     "anchor_text": "Drafts",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    }
+   ],
+   "h1_count": 1,
+   "canonical": "",
+   "status": 200,
+   "meta_robots": "",
+   "lang": "en",
+   "depth": 0,
+   "response_ms": 0.0,
+   "content_bytes": 0
+  },
+  {
+   "url": "https://greenleaf.example/about/",
+   "title": "GreenLeaf Gardening",
+   "h1": "About the GreenLeaf Gardeners",
+   "paragraphs": [
+    "GreenLeaf is run by two allotment gardeners who test every method in their own beds.",
+    "Our favourite crop is tomatoes; we share our tomato watering schedule with every new member."
+   ],
+   "existing_internal_links": [
+    "https://greenleaf.example/blog/tomato-watering-schedule/"
+   ],
+   "meta_description": "",
+   "links": [
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "GreenLeaf",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "Home",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/blog/tomato-watering-schedule/",
+     "anchor_text": "tomato watering schedule",
+     "location": "content",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/shop/compost-tumbler",
+     "anchor_text": "Compost Tumbler",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "https://greenleaf.example/shop/compost-tumbler/",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/private/drafts/",
+     "anchor_text": "Drafts",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    }
+   ],
+   "h1_count": 1,
+   "canonical": "",
+   "status": 200,
+   "meta_robots": "",
+   "lang": "en",
+   "depth": 1,
+   "response_ms": 0.0,
+   "content_bytes": 0
+  },
+  {
+   "url": "https://greenleaf.example/shop/compost-tumbler/",
+   "title": "Dual-Chamber Compost Tumbler",
+   "h1": "Dual-Chamber Compost Tumbler",
+   "paragraphs": [
+    "Two chambers let one batch cure while you fill the other, and the drum turns with a single crank.",
+    "Not sure where to start? The complete composting guide covers the basics."
+   ],
+   "existing_internal_links": [],
+   "meta_description": "A dual-chamber compost tumbler.",
+   "links": [
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "GreenLeaf",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "Home",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/about/",
+     "anchor_text": "About",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/shop/compost-tumbler",
+     "anchor_text": "Compost Tumbler",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "https://greenleaf.example/shop/compost-tumbler/",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/private/drafts/",
+     "anchor_text": "Drafts",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    }
+   ],
+   "h1_count": 1,
+   "canonical": "",
+   "status": 200,
+   "meta_robots": "",
+   "lang": "en",
+   "depth": 1,
+   "response_ms": 0.0,
+   "content_bytes": 0
+  },
+  {
+   "url": "https://greenleaf.example/blog/tomato-watering-schedule/",
+   "title": "",
+   "h1": "Tomato Watering Schedule",
+   "paragraphs": [
+    "Water deeply twice a week, more often in heat waves, and always at the base of the plant.",
+    "Tomatoes grow best in loose, rich raised bed soil that holds moisture.",
+    "See the vegetable gardening guide for spacing and sun requirements."
+   ],
+   "existing_internal_links": [
+    "https://greenleaf.example/blog/raised-bed-soil/"
+   ],
+   "meta_description": "",
+   "links": [
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "GreenLeaf",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "Home",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/about/",
+     "anchor_text": "About",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/blog/raised-bed-soil/",
+     "anchor_text": "raised bed soil",
+     "location": "content",
+     "internal": true,
+     "final_url": "",
+     "nofollow": true
+    },
+    {
+     "url": "https://greenleaf.example/shop/compost-tumbler",
+     "anchor_text": "Compost Tumbler",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "https://greenleaf.example/shop/compost-tumbler/",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/private/drafts/",
+     "anchor_text": "Drafts",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    }
+   ],
+   "h1_count": 1,
+   "canonical": "",
+   "status": 200,
+   "meta_robots": "",
+   "lang": "en",
+   "depth": 2,
+   "response_ms": 0.0,
+   "content_bytes": 0
+  },
+  {
+   "url": "https://greenleaf.example/blog/raised-bed-soil/",
+   "title": "Raised Bed Soil Mix",
+   "h1": "The Best Raised Bed Soil Mix",
+   "paragraphs": [
+    "Mix one third topsoil, one third compost and one third coarse material for drainage.",
+    "Making your own compost? The hot composting method produces enough for several beds.",
+    "Planning the whole plot first? Start with the vegetable gardening guide.",
+    "Test before you plant: our soil pH testing notes explain how."
+   ],
+   "existing_internal_links": [
+    "https://greenleaf.example/guides/vegetable-gardening/",
+    "https://greenleaf.example/blog/soil-ph-testing/"
+   ],
+   "meta_description": "Our raised bed soil recipe.",
+   "links": [
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "GreenLeaf",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "Home",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/about/",
+     "anchor_text": "About",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/guides/vegetable-gardening/",
+     "anchor_text": "vegetable gardening guide",
+     "location": "content",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/blog/soil-ph-testing/",
+     "anchor_text": "soil pH testing",
+     "location": "content",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/shop/compost-tumbler",
+     "anchor_text": "Compost Tumbler",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "https://greenleaf.example/shop/compost-tumbler/",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/private/drafts/",
+     "anchor_text": "Drafts",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    }
+   ],
+   "h1_count": 1,
+   "canonical": "",
+   "status": 200,
+   "meta_robots": "",
+   "lang": "en",
+   "depth": 3,
+   "response_ms": 0.0,
+   "content_bytes": 0
+  },
+  {
+   "url": "https://greenleaf.example/guides/vegetable-gardening/",
+   "title": "Vegetable Gardening Guide",
+   "h1": "Vegetable Gardening Guide for Beginners",
+   "paragraphs": [
+    "Pick a sunny spot, start small and grow the vegetables you actually like to eat.",
+    "Most beginners get the best harvests from raised beds filled with quality raised bed soil.",
+    "Tomatoes are thirsty; follow a tomato watering schedule to avoid split fruit and blossom end rot.",
+    "Our cedar raised bed kit assembles in ten minutes without tools.",
+    "Feed every bed with compost made with the complete composting guide."
+   ],
+   "existing_internal_links": [
+    "https://greenleaf.example/shop/raised-bed-kit/"
+   ],
+   "meta_description": "Plan and plant a vegetable garden.",
+   "links": [
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "GreenLeaf",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "Home",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/about/",
+     "anchor_text": "About",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/shop/raised-bed-kit/",
+     "anchor_text": "raised bed kit",
+     "location": "content",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/shop/compost-tumbler",
+     "anchor_text": "Compost Tumbler",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "https://greenleaf.example/shop/compost-tumbler/",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/private/drafts/",
+     "anchor_text": "Drafts",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    }
+   ],
+   "h1_count": 1,
+   "canonical": "",
+   "status": 200,
+   "meta_robots": "",
+   "lang": "en",
+   "depth": 4,
+   "response_ms": 0.0,
+   "content_bytes": 0
+  },
+  {
+   "url": "https://greenleaf.example/shop/raised-bed-kit/",
+   "title": "Cedar Raised Bed Kit",
+   "h1": "",
+   "paragraphs": [
+    "Untreated cedar boards, stainless steel corners and a ten year warranty.",
+    "Planning your plot? Read the vegetable gardening guide first."
+   ],
+   "existing_internal_links": [],
+   "meta_description": "",
+   "links": [
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "GreenLeaf",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "Home",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/about/",
+     "anchor_text": "About",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/shop/compost-tumbler",
+     "anchor_text": "Compost Tumbler",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "https://greenleaf.example/shop/compost-tumbler/",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/private/drafts/",
+     "anchor_text": "Drafts",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    }
+   ],
+   "h1_count": 0,
+   "canonical": "",
+   "status": 200,
+   "meta_robots": "",
+   "lang": "en",
+   "depth": 5,
+   "response_ms": 0.0,
+   "content_bytes": 0
+  },
+  {
+   "url": "https://greenleaf.example/guides/composting/",
+   "title": "Complete Composting Guide",
+   "h1": "Complete Composting Guide",
+   "paragraphs": [
+    "Composting turns kitchen scraps and garden waste into rich humus. Balance green and brown materials, keep the pile moist and turn it regularly.",
+    "If you want finished compost in weeks rather than months, try hot composting: a large, well-aerated pile heats up and breaks down fast.",
+    "A smelly or slow pile usually has a simple cause; our compost bin troubleshooting checklist covers the common fixes, click here.",
+    "Turning a heavy pile by hand is hard work, which is why many gardeners switch to a compost tumbler.",
+    "Finished compost is the best amendment for raised bed soil in the vegetable patch."
+   ],
+   "existing_internal_links": [
+    "https://greenleaf.example/blog/compost-bin-troubleshooting/"
+   ],
+   "meta_description": "How to compost at home.",
+   "links": [
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "GreenLeaf",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "Home",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/about/",
+     "anchor_text": "About",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/blog/compost-bin-troubleshooting/",
+     "anchor_text": "click here",
+     "location": "content",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/shop/compost-tumbler",
+     "anchor_text": "Compost Tumbler",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "https://greenleaf.example/shop/compost-tumbler/",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/private/drafts/",
+     "anchor_text": "Drafts",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    }
+   ],
+   "h1_count": 1,
+   "canonical": "",
+   "status": 200,
+   "meta_robots": "",
+   "lang": "en",
+   "depth": null,
+   "response_ms": 0.0,
+   "content_bytes": 0
+  },
+  {
+   "url": "https://greenleaf.example/blog/hot-composting/",
+   "title": "Hot Composting Method",
+   "h1": "Hot Composting Method",
+   "paragraphs": [
+    "Hot composting needs a pile of at least one cubic metre, a carbon to nitrogen ratio near 30 to 1 and turning every few days.",
+    "New to this? Read the complete composting guide before building your first pile.",
+    "A compost tumbler keeps the heat in and makes turning much easier.",
+    "Need it on paper? Download the printable version of this method."
+   ],
+   "existing_internal_links": [
+    "https://greenleaf.example/guides/composting/",
+    "https://greenleaf.example/blog/hot-composting/print/"
+   ],
+   "meta_description": "Make finished compost in about 30 days.",
+   "links": [
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "GreenLeaf",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "Home",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/about/",
+     "anchor_text": "About",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/guides/composting/",
+     "anchor_text": "complete composting guide",
+     "location": "content",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/blog/hot-composting/print/",
+     "anchor_text": "printable version",
+     "location": "content",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/shop/compost-tumbler",
+     "anchor_text": "Compost Tumbler",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "https://greenleaf.example/shop/compost-tumbler/",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/private/drafts/",
+     "anchor_text": "Drafts",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    }
+   ],
+   "h1_count": 1,
+   "canonical": "",
+   "status": 200,
+   "meta_robots": "",
+   "lang": "en",
+   "depth": null,
+   "response_ms": 0.0,
+   "content_bytes": 0
+  },
+  {
+   "url": "https://greenleaf.example/blog/compost-bin-troubleshooting/",
+   "title": "Compost Bin Troubleshooting",
+   "h1": "Compost Bin Troubleshooting",
+   "paragraphs": [
+    "Bad smells mean too much green material or too little air; add dry leaves and turn the pile thoroughly.",
+    "A pile that stays cold is often too small. Building it bigger is the core idea behind hot composting.",
+    "Back to basics: the complete composting guide explains the right mix of materials."
+   ],
+   "existing_internal_links": [],
+   "meta_description": "Fix smelly, slow or cold compost bins.",
+   "links": [
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "GreenLeaf",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "Home",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/about/",
+     "anchor_text": "About",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/shop/compost-tumbler",
+     "anchor_text": "Compost Tumbler",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "https://greenleaf.example/shop/compost-tumbler/",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/private/drafts/",
+     "anchor_text": "Drafts",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    }
+   ],
+   "h1_count": 2,
+   "canonical": "",
+   "status": 200,
+   "meta_robots": "",
+   "lang": "en",
+   "depth": null,
+   "response_ms": 0.0,
+   "content_bytes": 0
+  },
+  {
+   "url": "https://greenleaf.example/blog/old-news/",
+   "title": "Spring Fair 2019 Recap",
+   "h1": "Spring Fair 2019 Recap",
+   "paragraphs": [
+    "Thanks to everyone who visited our stall at the 2019 spring fair, see you next year."
+   ],
+   "existing_internal_links": [],
+   "meta_description": "Our stall at the 2019 spring fair.",
+   "links": [
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "GreenLeaf",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/",
+     "anchor_text": "Home",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/about/",
+     "anchor_text": "About",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/shop/compost-tumbler",
+     "anchor_text": "Compost Tumbler",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "https://greenleaf.example/shop/compost-tumbler/",
+     "nofollow": false
+    },
+    {
+     "url": "https://greenleaf.example/private/drafts/",
+     "anchor_text": "Drafts",
+     "location": "navigation",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    }
+   ],
+   "h1_count": 1,
+   "canonical": "",
+   "status": 200,
+   "meta_robots": "noindex, follow",
+   "lang": "en",
+   "depth": null,
+   "response_ms": 0.0,
+   "content_bytes": 0
+  },
+  {
+   "url": "https://greenleaf.example/blog/hot-composting/print/",
+   "title": "Hot Composting Method",
+   "h1": "Hot Composting Method",
+   "paragraphs": [
+    "Hot composting needs a pile of at least one cubic metre, a carbon to nitrogen ratio near 30 to 1 and turning every few days.",
+    "New to this? Read the complete composting guide before building your first pile.",
+    "A compost tumbler keeps the heat in and makes turning much easier."
+   ],
+   "existing_internal_links": [
+    "https://greenleaf.example/guides/composting/"
+   ],
+   "meta_description": "Printable version.",
+   "links": [
+    {
+     "url": "https://greenleaf.example/guides/composting/",
+     "anchor_text": "complete composting guide",
+     "location": "content",
+     "internal": true,
+     "final_url": "",
+     "nofollow": false
+    }
+   ],
+   "h1_count": 1,
+   "canonical": "https://greenleaf.example/blog/hot-composting/",
+   "status": 200,
+   "meta_robots": "",
+   "lang": "en",
+   "depth": null,
+   "response_ms": 0.0,
+   "content_bytes": 0
+  }
+ ],
+ "sitemap_urls": [
+  "https://greenleaf.example/",
+  "https://greenleaf.example/guides/compost/",
+  "https://greenleaf.example/blog/hot-composting/",
+  "https://greenleaf.example/blog/compost-bin-troubleshooting/",
+  "https://greenleaf.example/shop/compost-tumbler/",
+  "https://greenleaf.example/guides/vegetable-gardening/",
+  "https://greenleaf.example/blog/raised-bed-soil/",
+  "https://greenleaf.example/blog/tomato-watering-schedule/",
+  "https://greenleaf.example/about/",
+  "https://greenleaf.example/shop/old-compost-kit/",
+  "https://greenleaf.example/blog/old-news/"
+ ],
+ "sitemap_found": true,
+ "statuses": {
+  "https://greenleaf.example/": 200,
+  "https://greenleaf.example/about/": 200,
+  "https://greenleaf.example/shop/compost-tumbler": 200,
+  "https://greenleaf.example/shop/compost-tumbler/": 200,
+  "https://greenleaf.example/blog/tomato-watering-schedule/": 200,
+  "https://greenleaf.example/blog/raised-bed-soil/": 200,
+  "https://greenleaf.example/guides/vegetable-gardening/": 200,
+  "https://greenleaf.example/blog/soil-ph-testing/": 404,
+  "https://greenleaf.example/shop/raised-bed-kit/": 200,
+  "https://greenleaf.example/guides/compost/": 200,
+  "https://greenleaf.example/guides/composting/": 200,
+  "https://greenleaf.example/blog/hot-composting/": 200,
+  "https://greenleaf.example/blog/compost-bin-troubleshooting/": 200,
+  "https://greenleaf.example/shop/old-compost-kit/": 404,
+  "https://greenleaf.example/blog/old-news/": 200,
+  "https://greenleaf.example/blog/hot-composting/print/": 200
+ },
+ "redirects": {
+  "https://greenleaf.example/shop/compost-tumbler": "https://greenleaf.example/shop/compost-tumbler/",
+  "https://greenleaf.example/guides/compost/": "https://greenleaf.example/guides/composting/"
+ },
+ "robots_blocked": [
+  "https://greenleaf.example/private/drafts/"
+ ],
+ "truncated": false,
+ "duration_seconds": 0.0,
+ "redirect_chains": {
+  "https://greenleaf.example/shop/compost-tumbler": [
+   [
+    "https://greenleaf.example/shop/compost-tumbler",
+    301
+   ]
+  ],
+  "https://greenleaf.example/guides/compost/": [
+   [
+    "https://greenleaf.example/guides/compost/",
+    301
+   ],
+   [
+    "https://greenleaf.example/guides/composting",
+    301
+   ]
+  ]
+ },
+ "redirect_loops": [],
+ "excluded": [],
+ "external_statuses": {},
+ "content_types": {
+  "https://greenleaf.example/": "text/html",
+  "https://greenleaf.example/about/": "text/html",
+  "https://greenleaf.example/shop/compost-tumbler": "text/html",
+  "https://greenleaf.example/blog/tomato-watering-schedule/": "text/html",
+  "https://greenleaf.example/blog/raised-bed-soil/": "text/html",
+  "https://greenleaf.example/guides/vegetable-gardening/": "text/html",
+  "https://greenleaf.example/blog/soil-ph-testing/": "text/html",
+  "https://greenleaf.example/shop/raised-bed-kit/": "text/html",
+  "https://greenleaf.example/guides/compost/": "text/html",
+  "https://greenleaf.example/blog/hot-composting/": "text/html",
+  "https://greenleaf.example/blog/compost-bin-troubleshooting/": "text/html",
+  "https://greenleaf.example/shop/old-compost-kit/": "text/html",
+  "https://greenleaf.example/blog/old-news/": "text/html",
+  "https://greenleaf.example/blog/hot-composting/print/": "text/html"
+ },
+ "requests_made": 19,
+ "bytes_downloaded": 0,
+ "crawl_delay": 0.0
+}

@@ -3,13 +3,30 @@
 How do we know SEO-Magus is right? Real sites cannot tell us the correct output (nobody knows their "true" link
 plan and rankings change daily), so the project is checked against references whose answers are known.
 
+These benchmarks are small on purpose: every expected link is written down, so they catch any change of behaviour
+exactly. They say nothing about quality at scale or on real-world content; that is measured separately, against
+Wikipedia, the Internet Archive, Stack Exchange, crawled sites and large synthetic corpora, with the methodology in
+[EVALUATION.md](EVALUATION.md).
+
+## Running the benchmarks
+
+There are two ways to run them: **look** at the results through the real CLI, or **assert** them as tests.
+
 ```bash
+# Look: the tool's own output for every benchmark site (SITE=<key> for one, LOG_LEVEL=INFO|DEBUG for the why)
 make benchmark                 # terminal: verdict, site health and ranking for every benchmark site
 make benchmark-report          # HTML: build/benchmark-report/index.html
-make test-benchmarks           # the same, as assertions
+make benchmark SITE=stripe LOG_LEVEL=DEBUG
+
+# Assert: the benchmark test tier (pytest marker `benchmark`, ~5 s)
+make test-benchmarks           # every site: invariants, expected links, known gaps, audit ground truth
 make test-reference            # only the ground-truth references
-make test-mock-sites           # only the crawled mock sites
+make test-mock-sites           # only the crawled mock sites (crawler, audit, links, saved crawls)
 ```
+
+Run `make test-benchmarks` after any change to link decisions, anchors, ranking or audit checks: it is the tier that
+catches a quality regression even when every unit test still passes. It is part of `make test` and `make ci`; the
+other tiers (unit, integration) are described in [CONTRIBUTING.md](../CONTRIBUTING.md#test-tiers).
 
 ## Benchmark sites
 
@@ -32,7 +49,8 @@ both measured. For the others only recall is meaningful.
 Expected links the flow does not produce are recorded as *known gaps* with the rule that refuses them
 (`known_gaps` in `src/benchmarks/__init__.py`). Tests assert them exactly: a fix and a regression both fail until the
 record is updated. Today: `stripe` and `shopify`, whose source articles never mention the target page, so no
-contextual link is possible (a correct refusal; the fixture text does not support the expected link).
+contextual link is possible (a correct refusal by the classifier gate's pre-check; the fixture text does not support the
+expected link).
 
 ## Reference site (`reference`)
 
@@ -40,7 +58,8 @@ A fictional invoicing/payroll SaaS whose correct output was written before runni
 
 * 7 expected links, each with the anchor that names the target and the paragraph that names it best;
 * 5 traps, each topically tempting but blocked by exactly one rule (cluster boundary, one-way affinity, money →
-  support rule, existing link, classifier gate) – the test checks the *reason* of each refusal;
+  support rule, existing link, a single shared word that cannot make an anchor) – the test checks the *reason*
+  of each refusal;
 * SERP page 2 rows on the exact window boundaries, pillar click depths and the only expected orphan.
 
 The ranking math is pinned to an external result: Wikipedia's PageRank example graph (nodes A–K) must reproduce
@@ -70,6 +89,10 @@ Expected results (`src/benchmarks/mock_sites.py`):
 * **crawler behaviour** – the robots.txt-blocked page and external URLs are never requested, responses are gzipped.
 
 Browse or audit them yourself: `make serve-mock MOCK_SITE=greenleaf-good`, `make audit-mock`.
+
+Unit tests use **saved crawls** of both sites (`tests/fixtures/*.crawl.json`) so they get the same pages without
+starting a server. After changing a mock site (or the crawler) run `make fixtures`; the integration tier fails while a
+saved crawl differs from a live crawl.
 
 ## Adding a benchmark site
 

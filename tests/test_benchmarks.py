@@ -13,13 +13,15 @@ import unittest
 import warnings
 from unittest import mock
 
+import pytest
+
 from src.benchmarks import BENCHMARKS, BenchmarkRun, get_benchmark, run_benchmark
 from src.benchmarks import reference as ref
 from src.connectors.gsc_connector import GSCConnector
 from src.engines import link_graph as link_graph_module
-from src.engines.link_graph import HAS_NETWORKX, LinkGraph
+from src.engines.link_graph import HAS_NETWORKX, LinkGraph, TaxonomyWarning
 from src.engines.auxiliary_ai import MAX_ANCHOR_WORDS
-from src.engines.taxonomy import ROLE_MONEY, ROLE_SUPPORT, ROLES
+from src.engines.taxonomy import ROLE_MONEY, ROLE_SUPPORT, ROLES, SiteTaxonomy
 from src.engines.text import is_content_token, tokenize
 from src.benchmarks import mock_sites
 from src.workflows.linking_optimizer import (
@@ -30,6 +32,8 @@ from src.workflows.linking_optimizer import (
     REASON_ROLE_RULE,
     LinkingOptimizer,
 )
+
+pytestmark = pytest.mark.benchmark
 
 _RUNS = {}
 def _run(key: str) -> BenchmarkRun:
@@ -227,6 +231,16 @@ class TestBenchmarkInvariants(unittest.TestCase):
 
 class TestBenchmarkExpectations(unittest.TestCase):
     """Documented expected links per site; known gaps must match exactly."""
+
+    def test_unknown_benchmark_lists_the_available_ones(self):
+        with self.assertRaisesRegex(KeyError, r"Unknown benchmark 'nope'; available: \['canivete'"):
+            get_benchmark("nope")
+
+    def test_taxonomy_warnings_reach_the_caller_and_the_run(self):
+        stale = LinkingOptimizer(taxonomy=SiteTaxonomy(pillars=["/no-such-pillar"]))
+        with self.assertWarnsRegex(TaxonomyWarning, "/no-such-pillar"):
+            run = run_benchmark(get_benchmark("reference"), optimizer=stale)
+        self.assertTrue(any("/no-such-pillar" in w for w in run.taxonomy_warnings))
 
     def test_registry_is_well_formed(self):
         for key, site in BENCHMARKS.items():

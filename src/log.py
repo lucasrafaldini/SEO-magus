@@ -14,6 +14,10 @@ Library code never configures handlers; entry points (the CLI) call
   ERROR    failures that abort a step
 
 The level can also be set with the SEO_MAGUS_LOG_LEVEL environment variable.
+When SEO_MAGUS_RUN_ID is set (every `make` step sets it, see scripts/make_step.py), the
+entry points name it in their first log line (`run_context()`), so the logs of one make
+invocation can be followed across steps and log files. The line format itself never
+changes: log consumers and tests can rely on it.
 """
 
 import logging
@@ -26,11 +30,18 @@ ROOT_LOGGER_NAME = "seo_magus"
 LOG_LEVEL_ENV = "SEO_MAGUS_LOG_LEVEL"
 DEFAULT_LEVEL = "WARNING"
 LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
+RUN_ID_ENV = "SEO_MAGUS_RUN_ID"
 DATE_FORMAT = "%H:%M:%S"
 
 logging.getLogger(ROOT_LOGGER_NAME).addHandler(logging.NullHandler())
 
 _HANDLER_MARK = "_seo_magus_handler"
+
+
+def run_context() -> str:
+    """" (make run <id>)" inside a make step (SEO_MAGUS_RUN_ID set), else ""."""
+    run = os.environ.get(RUN_ID_ENV, "")
+    return f" (make run {run})" if run else ""
 
 
 def get_logger(module_name: str) -> logging.Logger:

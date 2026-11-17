@@ -1,3 +1,4 @@
 # Development & test dependencies (installed by `make install`)
 -r requirements.txt
 pytest>=8.0.0
+pytest-cov>=5.0.0  # `make coverage` / `make ci` (coverage settings in .coveragerc)

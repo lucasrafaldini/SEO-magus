@@ -89,18 +89,24 @@ class _Handler(BaseHTTPRequestHandler):
         body = target.read_bytes()
         content_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
         if content_type.startswith(_TEXT_TYPES):
-            body = body.replace(PRODUCTION_BASE.encode(), self.server.base_url.encode())
+            body = body.replace(self.server.production_base.encode(), self.server.base_url.encode())
             content_type += "; charset=utf-8"
         self._send_body(200, body, content_type)
 
 
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
+    # The socketserver default backlog (5) drops connections beyond 5 simultaneous
+    # ones; clients retry after ~1 s, so concurrent crawls looked slower than serial ones.
+    request_queue_size = 128
 
-    def __init__(self, site: str, port: int):
+    def __init__(self, site: str, port: int, root: Optional[Path] = None, production_base: str = PRODUCTION_BASE):
         self.site = site
-        self.root = (MOCK_SITES_DIR / site).resolve()
+        self.production_base = production_base.rstrip("/")
+        self.root = (Path(root) if root is not None else MOCK_SITES_DIR / site).resolve()
         if not self.root.is_dir():
+            if root is not None:
+                raise FileNotFoundError(f"Site directory not found: {root}")
             raise FileNotFoundError(f"Unknown mock site {site!r}; available: {available_sites()}")
         self.requests: List[str] = []
         self.encodings: List[str] = []
@@ -117,10 +123,16 @@ class _Server(ThreadingHTTPServer):
 
 
 class MockSiteServer:
-    """Serve a mock site on localhost for the duration of a `with` block."""
+    """
+    Serve a mock site on localhost for the duration of a `with` block.
 
-    def __init__(self, site: str, port: int = 0):
-        self._server = _Server(site, port)
+    `site` names a directory of mock_sites/; `root` serves any other directory
+    instead (e.g. a corpus rendered as a static site), with links written for
+    `production_base` rewritten to the local server.
+    """
+
+    def __init__(self, site: str, port: int = 0, root: Optional[Path] = None, production_base: str = PRODUCTION_BASE):
+        self._server = _Server(site, port, root=root, production_base=production_base)
         # Short poll interval: shutdown() returns quickly (default is 0.5 s per server).
         self._thread = threading.Thread(target=self._server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
 

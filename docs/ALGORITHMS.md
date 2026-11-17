@@ -51,11 +51,26 @@ gives the reason shown in reports and logs (`-vv`) and in `explain_link()`:
 | 2 | target cluster allowed for the source cluster (`taxonomy.clusters`, `cluster_affinities`) | `cluster boundary` |
 | 3 | the link does not already exist | `existing link` |
 | 4 | role rules (`link_rules.money_to_support`) | `role rule` |
-| 5 | the classifier judges every source paragraph; at least one must pass `min_confidence` and `min_score` | `classifier gate` |
-| 6 | a passing paragraph contains a descriptive anchor | `no natural anchor` |
+| 5 | classifier gate, pre-check: some source paragraph names at least `anchor_min_words` words of the target's topic (title, H1, page 2 queries) | `classifier gate` (detail: "pre-check ... classifier not called") |
+| 6 | classifier gate: the classifier judges those paragraphs; at least one must pass `min_confidence` and `min_score` | `classifier gate` |
+| 7 | a passing paragraph contains a descriptive anchor | `no natural anchor` |
 
 Among the paragraphs that pass, the best one gets the link: highest score, then confidence, then most descriptive
 anchor, then earliest.
+
+**Why the pre-check is lossless.** Every anchor names at least `anchor_min_words` topic words of one sentence, so a paragraph
+that does not name that many can never carry a link, whatever a classifier says. Skipping those paragraphs (and page
+pairs with none) before any classifier call changes no result; `tests/test_optimizer.py` checks this on random sites
+against the exhaustive flow (`LinkingOptimizer(prune=False)`).
+
+**Scale.** Pairs are not enumerated: an index of every page's topic terms finds, for each source, the only targets it
+names (exact under the matching rule, no word-by-word comparison), and the other pairs are counted by group
+(cluster, role, indexable) with the reason the gates would give them. Cost grows with the number of (page, named page)
+pairs - about linear for real text - instead of pages squared: 10,000 pages take about a minute and ~35,000
+classifier calls with the offline classifier (it was ~8×10⁸ calls before), see
+[EVALUATION.md](EVALUATION.md#scale). With `-vv` every pair is evaluated and logged one by one (same results).
+`run_optimization(pages, sources=[...])` proposes links from selected pages only (e.g. new posts), every page
+remaining a possible target.
 
 ## Anchors (`src/engines/auxiliary_ai.py`)
 

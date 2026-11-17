@@ -79,19 +79,25 @@ class SiteTaxonomy:
     money_pages: Tuple[str, ...] = ()
     clusters: Tuple[Tuple[str, Tuple[str, ...]], ...] = ()
     cluster_affinities: Tuple[Tuple[str, Tuple[str, ...]], ...] = ()
+    # Explicit page -> cluster assignments (URL, cluster), checked before the patterns.
+    # Not a config key: set programmatically, e.g. from content clustering or an evaluation.
+    assignments: Tuple[Tuple[str, str], ...] = ()
 
     def __post_init__(self):
         object.__setattr__(self, "pillars", tuple(self.pillars))
         object.__setattr__(self, "money_pages", tuple(self.money_pages))
         object.__setattr__(self, "clusters", _pairs(self.clusters))
         object.__setattr__(self, "cluster_affinities", _pairs(self.cluster_affinities))
+        items = self.assignments.items() if isinstance(self.assignments, Mapping) else self.assignments
+        object.__setattr__(self, "assignments", tuple((str(u), str(c)) for u, c in items))
+        object.__setattr__(self, "_assigned", {url_key(u): c for u, c in self.assignments})
 
         overlap = {_entry_key(e) for e in self.pillars} & {_entry_key(e) for e in self.money_pages}
         if overlap:
             pages = sorted(path if host is None else host + path for host, path in overlap)
             raise ValueError(f"Pages cannot be both pillar and money page: {pages}")
 
-        known = {name for name, _ in self.clusters} | {DEFAULT_CLUSTER}
+        known = {name for name, _ in self.clusters} | {c for _, c in self.assignments} | {DEFAULT_CLUSTER}
         for source, targets in self.cluster_affinities:
             unknown = sorted({source, *targets} - known)
             if unknown:
@@ -121,8 +127,16 @@ class SiteTaxonomy:
             return ROLE_MONEY
         return None
 
+    @property
+    def has_clusters(self) -> bool:
+        return bool(self.clusters or self.assignments)
+
     def cluster_for(self, url: str) -> str:
-        """First configured cluster whose pattern occurs in url, else "general"."""
+        """Assigned cluster of url, else the first cluster whose pattern occurs in url, else "general"."""
+        if self.assignments:
+            assigned = self._assigned.get(url_key(url))
+            if assigned is not None:
+                return assigned
         lowered = url.lower()
         for name, patterns in self.clusters:
             if any(pattern.lower() in lowered for pattern in patterns):

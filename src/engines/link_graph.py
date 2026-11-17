@@ -119,7 +119,7 @@ class LinkGraph:
             role = taxonomy.role_for(url)
             if role is not None:
                 updates["role"] = role
-            if taxonomy.clusters:
+            if taxonomy.has_clusters:
                 updates["cluster"] = taxonomy.cluster_for(url)
             self.page_metadata[url].update(updates)
             if HAS_NETWORKX:

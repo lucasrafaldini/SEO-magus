@@ -76,3 +76,6 @@ internal link.
 
 The ground truth for these checks is the pair of mock sites in `mock_sites/` (see [BENCHMARKS.md](BENCHMARKS.md#mock-sites)):
 the good site must have none of them, the scrambled site exactly its planted ones.
+
+The severities above are what `--fail-on error|warning` gates on in CI, and every issue is exported by
+`--json FILE` / `--csv DIR` (see [machine-readable output](USER_GUIDE.md#machine-readable-output-crawl-and-audit)).

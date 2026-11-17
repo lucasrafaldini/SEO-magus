@@ -12,13 +12,14 @@ import xml.dom.minidom
 from pathlib import Path
 from unittest import mock
 
-from src.benchmarks import get_benchmark, run_benchmark
+from src.benchmarks import get_benchmark, mock_sites, run_benchmark
 from src.benchmarks import reference as ref
 from src.config import SiteConfig
 from src.connectors.sitemap_crawler import ParsedPage
 from src.reporting import analyze_benchmark, analyze_site, render_index, render_site_report, write_reports
 from src.reporting import terminal
 from src.workflows.linking_optimizer import LinkingOptimizer
+from tests.fixtures.crawls import offline_analysis
 
 
 def _reference_analysis():
@@ -127,6 +128,49 @@ class TestHtmlReport(unittest.TestCase):
         self.assertIn('<td class="warn">0/1</td>', render_index([stripe]))
 
 
+class TestHtmlCrawledSite(unittest.TestCase):
+    """HTML report of a crawled site (saved crawl of the scrambled mock site): site health and page states."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.analysis = offline_analysis(mock_sites.SCRAMBLED_SITE)
+        cls.html = render_site_report(cls.analysis)
+
+    def test_site_health_section_lists_every_issue_escaped(self):
+        self.assertIn("<h2>Site health</h2>", self.html)
+        self.assertIn("max 3)", self.html)
+        for issue in self.analysis.site_audit.issues:
+            self.assertIn(f"<td>{issue.code}</td>", self.html)
+        self.assertIn("empty or missing &lt;title&gt;", self.html)
+        self.assertNotIn("empty or missing <title>", self.html)
+        self.assertIn('<span class="bad">4</span></div><div class="k">errors', self.html)
+
+    def test_healthy_site_says_so(self):
+        html = render_site_report(offline_analysis(mock_sites.GOOD_SITE))
+        self.assertIn("No issue found.", html)
+        self.assertIn('<span class="good">0</span></div><div class="k">errors', html)
+
+    def test_tooltips_explain_uncrawled_and_non_indexable_pages(self):
+        self.assertIn("(linked from the crawl, not crawled itself)", self.html)      # the 404 target
+        self.assertIn("(not indexable: noindex or canonicalized to another URL", self.html)
+
+    def test_single_site_report_has_no_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = write_reports([self.analysis], tmp)
+            self.assertEqual([p.name for p in paths], [f"{mock_sites.SCRAMBLED_SITE}.html"])
+            self.assertFalse(Path(tmp, "index.html").exists())
+            self.assertNotIn("all sites</a>", paths[0].read_text(encoding="utf-8"))
+
+    def test_non_exhaustive_verdict_lists_known_gaps_without_precision(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            stripe = analyze_benchmark(run_benchmark(get_benchmark("stripe")))
+        html = render_site_report(stripe)
+        self.assertIn('<span class="tag">known gap</span>', html)
+        self.assertIn("<b>classifier gate</b>", html)
+        self.assertNotIn("precision", html.split("<h2>Benchmark verdict</h2>", 1)[1].split("</section>", 1)[0])
+
+
 class TestTerminal(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -170,6 +214,45 @@ class TestTerminal(unittest.TestCase):
         with mock.patch.dict("os.environ", {}, clear=True):
             piped = terminal.TerminalStyle.detect(stream=io.StringIO())
         self.assertEqual((piped.unicode, piped.color, piped.width), (False, False, terminal.DEFAULT_WIDTH))
+
+    def test_truncation_and_tables_that_cannot_shrink(self):
+        style = terminal.TerminalStyle()
+        self.assertEqual(terminal._truncate("abcdef", 2, style), "ab")      # no room for "..."
+        self.assertEqual(terminal._truncate("abcdef", 5, style), "ab...")
+        columns = [terminal.Column("wide", min_width=30), terminal.Column("wider", min_width=30)]
+        lines = terminal.render_table("", columns, [terminal.TableRow(["a", "b"])], terminal.TerminalStyle(width=40))
+        self.assertEqual(len(lines), 5)                                     # nothing optional: kept as is
+
+    def test_explicit_style_arguments_skip_detection(self):
+        with mock.patch.dict("os.environ", {"SEO_MAGUS_UNICODE": "1", "NO_COLOR": "1"}):
+            style = terminal.TerminalStyle.detect(stream=io.StringIO(), unicode=False, color=True, width=30)
+        self.assertEqual((style.unicode, style.color, style.width), (False, True, 40))   # width floor is 40
+
+    def test_site_audit_table_and_overflow_line(self):
+        analysis = offline_analysis(mock_sites.SCRAMBLED_SITE)
+        out = io.StringIO()
+        terminal.print_site_audit(analysis, limit=100, file=out, style=terminal.TerminalStyle())
+        self.assertIn("Site audit issues (top 26 of 26)", out.getvalue())
+        self.assertNotIn("more issues not shown", out.getvalue())
+        out = io.StringIO()
+        terminal.print_site_audit(analysis, limit=3, file=out, style=terminal.TerminalStyle())
+        self.assertIn("... 23 more issues not shown", out.getvalue())
+        healthy = io.StringIO()
+        terminal.print_site_audit(offline_analysis(mock_sites.GOOD_SITE), file=healthy, style=terminal.TerminalStyle())
+        self.assertEqual(healthy.getvalue().splitlines(),
+                         ["  Site health: 10/10 healthy pages (100%) | 0 errors, 0 warnings, 0 notices"])
+
+    def test_verdict_is_silent_without_benchmark_and_lists_unexpected_links(self):
+        out = io.StringIO()
+        terminal.print_verdict(analyze_site("x", "X", [], LinkingOptimizer().baseline_graph,
+                                            LinkingOptimizer().link_graph, self.analysis.report, SiteConfig()), file=out)
+        self.assertEqual(out.getvalue(), "")
+        analysis = offline_analysis(mock_sites.SCRAMBLED_SITE)
+        source, target = analysis.pages[0].url, analysis.pages[1].url
+        analysis.benchmark.unexpected = [(source, target)]
+        terminal.print_verdict(analysis, file=out, style=terminal.TerminalStyle())
+        self.assertIn(f"[X] unexpected {analysis.pages[0].label} -> {analysis.pages[1].label}", out.getvalue())
+        self.assertIn("[X] Expected links found", out.getvalue())   # unexpected links fail the verdict
 
     def test_verdict_explains_missing_links(self):
         with warnings.catch_warnings():

@@ -10,6 +10,9 @@ Tests whether the Jev System 1 + Auxiliary AI cascade correctly identifies:
 """
 
 import unittest
+
+import pytest
+
 from tests.fixtures.famous_sites_data import (
     get_mailchimp_pages,
     get_stripe_pages,
@@ -17,6 +20,8 @@ from tests.fixtures.famous_sites_data import (
     get_github_pages,
 )
 from src.workflows.linking_optimizer import LinkingOptimizer
+
+pytestmark = pytest.mark.benchmark
 
 
 class TestFamousSitesBenchmarks(unittest.TestCase):

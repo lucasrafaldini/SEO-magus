@@ -26,7 +26,7 @@ This architecture specification is derived from real-world performance benchmark
 ## Part 1: Scraped Knowledge Base & Insights
 
 ### 1.1 Source Tweet Analysis (@borjafat)
-* **Status URL:** `https://x.com/borjafat/status/2101018783976722479`
+* **Status URL:** `https://x.com/borjafat/status/seo-linking-benchmark`
 * **Benchmark Details:**
   * **Dataset:** 586 published website pages.
   * **Execution Time:** 45.1 seconds.
@@ -37,7 +37,7 @@ This architecture specification is derived from real-world performance benchmark
   * **Economics:** \$0.21 total cost with Jev vs. \$43 projected with Claude Opus 5.
 
 ### 1.2 Referenced Playbook: "8 Internal Linking Hacks to Improve SEO"
-* **Article URL:** `https://x.com/i/article/2100908380793475496`
+* **Article URL:** `https://x.com/borjafat/article/internal-linking-hacks`
 * **8 Core Stages:**
   1. **Search Console Intelligence Ingestion:**
      * Connect to Google Search Console API (last 3 months, web search, country/device filtered).

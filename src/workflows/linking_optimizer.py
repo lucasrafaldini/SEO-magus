@@ -13,10 +13,12 @@ queries added to its topic (readers literally search for it that way), and
 links that boost page 2 pages are flagged and listed first in the report.
 """
 
+import logging
 import time
-from collections import Counter
+from bisect import bisect_left
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from src.config import DEFAULT_THRESHOLDS, LinkRules, SiteConfig, Thresholds
 from src.connectors.gsc_connector import GSCConnector, GSCQueryRow
@@ -27,6 +29,7 @@ from src.engines.classifiers.jev import JevClassifier
 from src.engines.jev_client import JevClient
 from src.engines.link_graph import LinkGraph
 from src.engines.taxonomy import SiteTaxonomy, url_key
+from src.engines.text import MIN_PREFIX_LEN, content_tokens
 from src.log import get_logger
 
 logger = get_logger(__name__)
@@ -66,6 +69,74 @@ REASON_NO_ANCHOR = "no natural anchor"
 REASON_UNKNOWN_PAGE = "unknown page"
 REASON_SELF_LINK = "self link"
 REASON_NOT_INDEXABLE = "not indexable"
+# The classifier gate starts with a lexical pre-check: a pair whose source has no paragraph naming
+# anchor_min_words of the target's topic words is refused by the gate without calling the classifier
+# (no anchor could ever be written). Same reason as the classifier's own refusals, so explanations,
+# reports and benchmark records keep one vocabulary; the detail says which step refused.
+REASON_NO_TOPIC_MENTION = REASON_CLASSIFIER_GATE
+
+
+class Words:
+    """The distinct words of a text, prepared for tokens_match() lookups without pairwise comparison."""
+
+    __slots__ = ("set", "sorted")
+
+    def __init__(self, words: Iterable[str]):
+        self.set = set(words)
+        self.sorted = sorted(self.set)
+
+    def names(self, term: str) -> bool:
+        """Does any word match `term` under tokens_match()? (equal, or prefix relation, both >= 4 chars)"""
+        if term in self.set:
+            return True
+        if len(term) < MIN_PREFIX_LEN:
+            return False
+        for end in range(MIN_PREFIX_LEN, len(term)):          # a word that is a prefix of the term
+            if term[:end] in self.set:
+                return True
+        i = bisect_left(self.sorted, term)                      # a word that extends the term
+        return i < len(self.sorted) and self.sorted[i].startswith(term)
+
+
+class TopicIndex:
+    """
+    Which pages' topic terms does a set of words name? Exact under tokens_match()
+    (equal words, or a prefix relation between words of >= MIN_PREFIX_LEN characters)
+    without comparing word pairs: equal terms and terms that are prefixes of a word
+    are dictionary lookups, terms that extend a word are a range of the sorted terms.
+    """
+
+    def __init__(self):
+        self.postings: Dict[str, List[int]] = defaultdict(list)   # term -> page positions
+        self._sorted: List[str] = []
+
+    def add(self, position: int, terms: Set[str]) -> None:
+        for term in terms:
+            self.postings[term].append(position)
+
+    def freeze(self) -> "TopicIndex":
+        self._sorted = sorted(self.postings)
+        return self
+
+    def __len__(self) -> int:
+        return len(self.postings)
+
+    def terms_named_by(self, words: Set[str]) -> Set[str]:
+        found: Set[str] = set()
+        postings, terms = self.postings, self._sorted
+        for word in words:
+            if word in postings:
+                found.add(word)
+            if len(word) < MIN_PREFIX_LEN:
+                continue
+            for end in range(MIN_PREFIX_LEN, len(word)):          # terms that are prefixes of the word
+                if word[:end] in postings:
+                    found.add(word[:end])
+            i = bisect_left(terms, word)                            # terms that extend the word
+            while i < len(terms) and terms[i].startswith(word):
+                found.add(terms[i])
+                i += 1
+        return found
 
 
 @dataclass
@@ -121,6 +192,7 @@ class LinkingOptimizer:
         thresholds: Optional[Thresholds] = None,
         link_rules: Optional[LinkRules] = None,
         *,
+        prune: bool = True,
         jev_client: Optional[JevClient] = None,       # deprecated: pass classifier=JevClassifier(client)
         min_jev_score: Optional[float] = None,        # deprecated alias of min_score
         min_jev_confidence: Optional[float] = None,   # deprecated alias of min_confidence
@@ -136,6 +208,11 @@ class LinkingOptimizer:
             classifier = JevClassifier(client=jev_client) if jev_client is not None else build_classifier()
         self.classifier = classifier
         self.aux_ai = auxiliary_ai or AuxiliaryAIEngine(min_anchor_words=self.thresholds.anchor_min_words)
+        # Pruning skips paragraphs (and page pairs) that cannot carry an anchor for the
+        # target, before any classifier call. Results are identical to prune=False (every
+        # pair, every paragraph); only the cost and the refusal reason of those pairs change.
+        # It needs the anchor engine's rule (may_anchor); custom engines without it are never pruned.
+        self.prune = prune and callable(getattr(self.aux_ai, "may_anchor", None))
         # State of the most recent run_optimization() call (rebuilt on every run).
         self.link_graph = LinkGraph()        # crawl links + approved links
         self.baseline_graph = LinkGraph()    # crawl links only (before optimization)
@@ -143,6 +220,8 @@ class LinkingOptimizer:
         self._last_approved: Dict[Tuple[str, str], LinkDecision] = {}
         self._page2: Dict[Tuple[str, str], List[GSCQueryRow]] = {}
         self._used_anchors: Dict[str, List[str]] = {}
+        self._paragraph_tokens: Dict[str, List[Words]] = {}
+        self._urls: List[str] = []
 
     @classmethod
     def from_config(cls, site_config: SiteConfig, **kwargs) -> "LinkingOptimizer":
@@ -225,7 +304,20 @@ class LinkingOptimizer:
         best_score, best_confidence, passed_gate = 0.0, 0.0, False
         best: Optional[Tuple[Tuple[float, float, int], LinkOptimizationResult]] = None
 
-        for paragraph in source.paragraphs:
+        paragraphs = source.paragraphs
+        if self.prune:
+            topic = self.aux_ai.topic_terms(target.title, target_topic, queries)
+            tokens = self._paragraph_tokens.get(source.url) or [Words(content_tokens(p)) for p in paragraphs]
+            paragraphs = [p for p, words in zip(paragraphs, tokens) if self._names_topic(words, topic)]
+            if not paragraphs:
+                return LinkDecision(
+                    source.url, target.url, REASON_NO_TOPIC_MENTION,
+                    f"pre-check: no paragraph names {self.aux_ai.min_anchor_words}+ words of the target's topic "
+                    f"({', '.join(sorted(topic)) or 'empty'}), so no descriptive anchor is possible "
+                    "(classifier not called)",
+                )
+
+        for paragraph in paragraphs:
             judgement = self.classifier.evaluate(LinkCandidate(
                 source_url=source.url,
                 source_paragraph=paragraph,
@@ -270,7 +362,7 @@ class LinkingOptimizer:
                     classifier=judgement.provider,
                 ))
 
-        evaluated = len(source.paragraphs)
+        evaluated = len(paragraphs)
         if best is not None:
             result = best[1]
             return LinkDecision(source.url, target.url, REASON_APPROVED, result.rationale, result, evaluated)
@@ -287,6 +379,63 @@ class LinkingOptimizer:
             f"{self.min_score} / {self.min_confidence}",
             None, evaluated,
         )
+
+    def _names_topic(self, words: Words, topic: Set[str]) -> bool:
+        """may_anchor() on prepared paragraph words: >= min_anchor_words distinct topic terms named."""
+        needed, named = self.aux_ai.min_anchor_words, 0
+        for term in topic:
+            if words.names(term):
+                named += 1
+                if named >= needed:
+                    return True
+        return False
+
+    # ------------------------------------------------------------- candidates
+
+    def _topic_index(self, pages: List[ParsedPage]) -> TopicIndex:
+        """Topic terms (title, H1, page 2 queries) of every indexable page."""
+        index = TopicIndex()
+        for position, page in enumerate(pages):
+            if page.indexable:
+                queries = [row.query for row in self._page2.get(url_key(page.url), [])]
+                index.add(position, self.aux_ai.topic_terms(page.title, page.h1 or page.title, queries))
+        return index.freeze()
+
+    def _candidates(self, position: int, index: TopicIndex) -> List[int]:
+        """
+        Pages whose topic this page names with >= min_anchor_words distinct terms:
+        the only targets it could carry an anchor for (a necessary condition; _decide
+        then checks it paragraph by paragraph).
+        """
+        words = set().union(*(w.set for w in self._paragraph_tokens[self._urls[position]]))
+        named: Counter = Counter()
+        for term in index.terms_named_by(words):
+            named.update(index.postings[term])
+        needed = self.aux_ai.min_anchor_words
+        return sorted(t for t, count in named.items() if count >= needed and t != position)
+
+    def _count_skipped_pairs(self, source: ParsedPage, skip: Set[int], groups, reasons: Counter) -> None:
+        """
+        Refusal reasons of the pairs not evaluated one by one, counted per group of
+        targets sharing (cluster, role, indexable): exactly what _decide() returns for
+        each of them (none is a candidate, so every gate passed ends at the classifier gate's pre-check).
+        """
+        source_cluster = self.link_graph.page_metadata[source.url]["cluster"]
+        allowed = self.taxonomy.allowed_target_clusters(source_cluster)
+        for (cluster, _, indexable), (members, representative) in groups.items():
+            count = len(members) - sum(1 for i in skip if i in members)   # O(|skip|), not O(|members|)
+            if not count:
+                continue
+            if not indexable:
+                reason = REASON_NOT_INDEXABLE
+            elif cluster not in allowed:
+                reason = REASON_CLUSTER_BOUNDARY
+            elif not self.link_graph.validate_link_rules(
+                    source.url, representative, money_to_support=self.link_rules.money_to_support)[0]:
+                reason = REASON_ROLE_RULE
+            else:
+                reason = REASON_NO_TOPIC_MENTION
+            reasons[reason] += count
 
     # ------------------------------------------------------------------- run
 
@@ -313,8 +462,16 @@ class LinkingOptimizer:
         self,
         pages: List[ParsedPage],
         gsc_data: Optional[List[GSCQueryRow]] = None,
+        sources: Optional[Iterable[str]] = None,
     ) -> AuditReport:
+        """
+        Propose links between `pages`. With `sources`, only those pages (URLs) get
+        proposals; every page is still a possible target and part of the graph
+        (e.g. new posts linking into an existing site). Decisions are counted for
+        the evaluated sources only.
+        """
         start_time = time.time()
+        only = None if sources is None else set(sources)
         fallbacks_before = getattr(self.classifier, "fallbacks", 0)
         logger.info(
             "Optimization started: %d pages | classifier %s | gate score >= %s, confidence >= %s | "
@@ -347,15 +504,49 @@ class LinkingOptimizer:
         refused_pages_set: Set[str] = set(p.url for p in pages)
         reasons: Counter = Counter()
 
-        # 2. Evaluate every ordered page pair; _decide applies the gates in order.
+        # 2. Evaluate the ordered page pairs; _decide applies the gates in order.
+        #    With pruning, only pairs where the source names the target's topic (and
+        #    existing links) are evaluated one by one; the others are counted by group.
         self._last_pages = {page.url: page for page in pages}
         self._last_approved = {}
         self._used_anchors = {page.url: list(page.content_anchor_texts) for page in pages}
-        for index, source in enumerate(pages, start=1):
+        self._urls = [page.url for page in pages]
+        positions = {url: i for i, url in enumerate(self._urls)}
+        self._paragraph_tokens = {page.url: [Words(content_tokens(p)) for p in page.paragraphs] for page in pages} \
+            if self.prune else {}
+        # Pair by pair when asked to (prune=False), when -vv logs every decision, or if URLs repeat.
+        pair_by_pair = (not self.prune or logger.isEnabledFor(logging.DEBUG) or len(positions) != len(pages))
+        index = TopicIndex()
+        groups: Dict[Tuple[str, str, bool], Tuple[Set[int], str]] = {}
+        if not pair_by_pair:
+            index = self._topic_index(pages)
+            for i, page in enumerate(pages):
+                meta = self.link_graph.page_metadata[page.url]
+                members, _ = groups.setdefault((meta["cluster"], meta["role"], page.indexable), (set(), page.url))
+                members.add(i)
+            logger.info("Candidate index: %d topic keys over %d pages", len(index), len(pages))
+        total_sources = len(pages) if only is None else sum(1 for page in pages if page.url in only)
+        # Progress at INFO about every 10% on larger sites; the per-page line is DEBUG (it would flood INFO).
+        progress_every = max(1, -(-total_sources // 10)) if total_sources >= 20 else 0
+        done_sources = 0
+        for index_no, source in enumerate(pages, start=1):
+            if only is not None and source.url not in only:
+                continue
+            done_sources += 1
             calls_before, approved_before = candidate_count, len(approved_links)
-            for target in pages:
-                if source.url == target.url:
-                    continue
+            if pair_by_pair:
+                targets = [t for t in pages if t.url != source.url]
+            elif not source.indexable:
+                reasons[REASON_NOT_INDEXABLE] += len(pages) - 1
+                targets = []
+            else:
+                me = index_no - 1
+                chosen = set(self._candidates(me, index))
+                chosen.update(positions[u] for u in self.link_graph.edges[source.url] if u in positions)
+                chosen.discard(me)
+                self._count_skipped_pairs(source, chosen | {me}, groups, reasons)
+                targets = [pages[i] for i in sorted(chosen)]
+            for target in targets:
                 decision = self._decide(source, target)
                 reasons[decision.reason] += 1
                 candidate_count += decision.paragraphs_evaluated
@@ -367,16 +558,21 @@ class LinkingOptimizer:
                     self.link_graph.add_link(source.url, target.url, result.anchor_text)
                     self._used_anchors[source.url].append(result.anchor_text)
                     refused_pages_set.discard(target.url)
-                    logger.info(
+                    logger.debug(       # every link is in the report (and printed by `audit`): DEBUG, not INFO
                         "Link approved: %s -> %s [%s] score %s, confidence %s (%s)%s",
                         source.url, target.url, result.anchor_text, result.relevance_score,
                         result.confidence, result.classifier,
                         f" | boosts page 2 query '{result.page2_query}'" if result.page2_query else "",
                     )
-            logger.info(
-                "Source %d/%d done: %s | %d classifier calls, %d links approved",
-                index, len(pages), source.url, candidate_count - calls_before, len(approved_links) - approved_before,
+            logger.debug(
+                "Source %d/%d done: %s | %d pairs evaluated, %d classifier calls, %d links approved",
+                index_no, len(pages), source.url, len(targets), candidate_count - calls_before,
+                len(approved_links) - approved_before,
             )
+            if progress_every and done_sources % progress_every == 0 and done_sources < total_sources:
+                logger.info("Link search %d%% (%d/%d source pages): %d links approved, %d classifier calls so far",
+                            100 * done_sources // total_sources, done_sources, total_sources, len(approved_links),
+                            candidate_count)
 
         # Page 2 boosting links first (most impressions first), then in evaluation order.
         approved_links.sort(key=lambda r: -r.page2_impressions)

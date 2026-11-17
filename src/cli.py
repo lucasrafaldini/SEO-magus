@@ -5,29 +5,37 @@ Settings precedence for every command: explicit flag > --config file > built-in 
 Global options (before the sub-command):
   logging   --log-level / -v / -vv / --log-file (or SEO_MAGUS_LOG_LEVEL)
   output    --unicode (box drawing and glyphs; default plain ASCII), --no-color
+
+`crawl` and `audit` also write machine-readable output (--json FILE, --csv DIR)
+and can fail a CI job with --fail-on error|warning (exit status 1).
 """
 
 import argparse
 import sys
 import threading
+from collections import Counter
 from pathlib import Path
 from typing import List, Optional
 
 from src.benchmarks import BENCHMARKS, get_benchmark, run_benchmark
+from src.benchmarks.demo import sample_crawl
 from src.benchmarks.mock_sites import MockSiteServer, available_sites
 from src.config import SiteConfig, load_site_config
 from src.connectors.gsc_connector import GSCConnector
 from src.connectors.sitemap_crawler import CrawlResult, SitemapCrawler
-from src.log import configure_logging, get_logger
+from src.log import configure_logging, get_logger, run_context
 from src.reporting import analyze_benchmark, analyze_site, write_reports
+from src.reporting.export import ExportSource, failing_issues, site_audit_of, write_csv, write_json
 from src.reporting.terminal import (
     TerminalStyle, configure_terminal, get_style, print_leaderboard, print_links, print_site_audit, print_verdict,
 )
 from src.workflows.linking_optimizer import LinkingOptimizer
-from src.workflows.site_audit import audit_site
+from src.workflows.site_audit import ERROR, WARNING, audit_site
 
 logger = get_logger(__name__)
 RULE = "=" * 70
+FAIL_ON_SEVERITIES = (ERROR, WARNING)     # --fail-on: "error" = errors only, "warning" = errors and warnings
+FAILED_ISSUES_SHOWN = 5                   # issues listed under the quality gate message
 
 
 def _banner(title: str) -> None:
@@ -54,6 +62,37 @@ def _report_paths(paths: List[Path]) -> None:
     print(f"\n[+] HTML report: {paths[0].resolve()}{extra}")
 
 
+def _exports(source: ExportSource, json_path: Optional[str], csv_dir: Optional[str] = None) -> None:
+    """Machine-readable exports of a run: one JSON document and/or the CSV tables."""
+    if json_path:
+        print(f"[+] JSON export: {write_json(source, json_path).resolve()}")
+    if csv_dir:
+        paths = write_csv(source, csv_dir)
+        written = ", ".join(p.name for p in paths) if paths else "no rows to export"
+        print(f"[+] CSV export: {Path(csv_dir).resolve()} ({written})")
+
+
+def _fail_on_status(source: Optional[ExportSource], fail_on: Optional[str]) -> int:
+    """Exit status of the CI check: 1 when issues at least as severe as --fail-on were found."""
+    if not fail_on:
+        return 0
+    if site_audit_of(source) is None:
+        print(f"[!] --fail-on {fail_on}: no site audit in this run (nothing was crawled).")
+        return 0
+    issues = failing_issues(source, fail_on)
+    if not issues:
+        print(f"[+] Quality gate passed: no issue of severity '{fail_on}' or above (--fail-on {fail_on}).")
+        return 0
+    counts = Counter(issue.severity for issue in issues)
+    found = ", ".join(f"{counts[s]} {s}(s)" for s in FAIL_ON_SEVERITIES if counts[s])
+    print(f"\n[!] Quality gate failed (--fail-on {fail_on}): {found}.")
+    for issue in issues[:FAILED_ISSUES_SHOWN]:
+        print(f"    [{issue.severity}] {issue.code}: {issue.url}")
+    if len(issues) > FAILED_ISSUES_SHOWN:
+        print(f"    ... and {len(issues) - FAILED_ISSUES_SHOWN} more")
+    return 1
+
+
 def optimizer_site_config(optimizer: LinkingOptimizer, base: Optional[SiteConfig] = None) -> SiteConfig:
     """The effective configuration of an optimizer (after CLI overrides)."""
     return SiteConfig(thresholds=optimizer.thresholds, taxonomy=optimizer.taxonomy, link_rules=optimizer.link_rules,
@@ -75,7 +114,8 @@ def _crawl(url: str, site_config: SiteConfig, crawl_overrides: Optional[dict], s
 
 
 def run_crawl(url: str, config_path: Optional[str] = None, crawl_overrides: Optional[dict] = None,
-              sitemap: Optional[str] = None, save_crawl: Optional[str] = None, limit: int = 25):
+              sitemap: Optional[str] = None, save_crawl: Optional[str] = None, limit: int = 25,
+              json_path: Optional[str] = None, csv_dir: Optional[str] = None):
     """Crawl + site audit only (no link classifier calls)."""
     _banner("SEO-MAGUS: CRAWL AND SITE AUDIT")
     site_config = _site_config(config_path)
@@ -86,6 +126,7 @@ def run_crawl(url: str, config_path: Optional[str] = None, crawl_overrides: Opti
     print_site_audit(_AuditOnly(audit), limit=limit)
     if crawl.external_statuses:
         print(f"  External links checked: {len(crawl.external_statuses)} ({len(crawl.broken_external_urls)} broken)")
+    _exports(audit, json_path, csv_dir)
     return crawl, audit
 
 
@@ -109,15 +150,24 @@ def run_audit(
     crawl_overrides: Optional[dict] = None,
     from_crawl: Optional[str] = None,
     save_crawl: Optional[str] = None,
+    json_path: Optional[str] = None,
+    csv_dir: Optional[str] = None,
 ):
+    """
+    Crawl (or load) a site, audit it, propose links and rank the pages.
+
+    Returns the SiteAnalysis of the run, or the SiteAuditReport alone when no
+    page could be crawled; both can be exported and checked with --fail-on.
+    """
     _banner("SEO-MAGUS: SITE AUDIT AND INTERNAL LINKING")
     site_config = _site_config(config_path)
     crawl = site_audit = None
+    name = url or "Demo audit"
     crawl_overrides = dict(crawl_overrides or {}, **({"max_pages": max_pages} if max_pages else {}))
     if url or from_crawl:
         if from_crawl:
             crawl = CrawlResult.load(from_crawl)
-            url = crawl.start_url
+            url = name = crawl.start_url
             print(f"\n[+] Loaded saved crawl of {url}: {len(crawl.pages)} pages (no network access).")
         else:
             crawl = _crawl(url, site_config, crawl_overrides, sitemap)
@@ -127,11 +177,18 @@ def run_audit(
         site_audit = audit_site(crawl, site_config.thresholds.max_click_depth, site_config.thresholds.slow_page_ms)
         if not pages:
             print("[!] No HTML page could be crawled: check the URL.")
-            return
+            _exports(site_audit, json_path, csv_dir)
+            return site_audit
+    elif demo:
+        # A small recorded site: the same pages as SitemapCrawler.get_sample_site_pages() plus the
+        # links, headings and sitemap a crawler records, so the demo also runs the site audit.
+        crawl = sample_crawl()
+        pages, gsc_data = crawl.pages, GSCConnector.get_sample_dataset()
+        site_audit = audit_site(crawl, site_config.thresholds.max_click_depth, site_config.thresholds.slow_page_ms)
+        print(f"\n[+] Demo dataset: {len(pages)} pages of a sample site (site audit included) and {len(gsc_data)} "
+              "Search Console queries (use --url to crawl your site).")
     else:
-        pages = SitemapCrawler.get_sample_site_pages() if demo else []
-        gsc_data = GSCConnector.get_sample_dataset() if demo else []
-        print(f"\n[+] Demo dataset: {len(pages)} pages and {len(gsc_data)} Search Console queries (use --url to crawl a site).")
+        pages, gsc_data = [], []
 
     optimizer = LinkingOptimizer.from_config(site_config, min_score=min_score, min_confidence=min_conf)
     print(f"[*] Classifier: {optimizer.classifier.describe()}")
@@ -146,7 +203,7 @@ def run_audit(
     print(f"[*] Page 2 pages boosted       : {len(report.page2_pages_boosted)}")
 
     analysis = analyze_site(
-        "audit", url or "Demo audit", pages, optimizer.baseline_graph, optimizer.link_graph, report,
+        "audit", name, pages, optimizer.baseline_graph, optimizer.link_graph, report,
         optimizer_site_config(optimizer, site_config), gsc_data,
     )
     analysis.site_audit = site_audit
@@ -159,6 +216,8 @@ def run_audit(
     print_leaderboard(analysis, limit=top)
     if html_dir:
         _report_paths(write_reports([analysis], html_dir))
+    _exports(analysis, json_path, csv_dir)
+    return analysis
 
 
 def run_boost_page2(
@@ -236,6 +295,17 @@ def _add_crawl_arguments(parser: argparse.ArgumentParser) -> None:
     group.add_argument("--save-crawl", default=None, metavar="FILE", help="Save the crawl as JSON (re-audit with --from-crawl)")
 
 
+def _add_output_arguments(parser: argparse.ArgumentParser) -> None:
+    """Machine-readable output and the CI exit-code check (crawl and audit)."""
+    group = parser.add_argument_group("machine-readable output (CI)")
+    group.add_argument("--json", default=None, metavar="FILE", dest="json_path",
+                       help="Write the run as one JSON document (issues, page ranking, proposed links)")
+    group.add_argument("--csv", default=None, metavar="DIR", dest="csv_dir",
+                       help="Write issues.csv, pages.csv and links.csv to this directory")
+    group.add_argument("--fail-on", choices=list(FAIL_ON_SEVERITIES), default=None,
+                       help="Exit with status 1 when the audit finds issues of this severity or above")
+
+
 def _crawl_overrides(args) -> dict:
     return {
         "max_pages": args.max_pages, "max_depth": args.max_depth, "concurrency": args.concurrency,
@@ -273,6 +343,7 @@ def build_parser() -> argparse.ArgumentParser:
     audit_parser.add_argument("--config", default=None, help=config_help)
     audit_parser.add_argument("--html", default=None, metavar="DIR", help=html_help)
     audit_parser.add_argument("--top", type=int, default=10, help="Pages shown in the terminal leaderboard")
+    _add_output_arguments(audit_parser)
 
     boost_parser = subparsers.add_parser("boost-page2", help="Find Page 2 queries to boost")
     boost_parser.add_argument("--min-pos", type=float, default=None, help="Min SERP position (overrides config; default 11.0)")
@@ -290,6 +361,7 @@ def build_parser() -> argparse.ArgumentParser:
     crawl_parser.add_argument("--config", default=None, help=config_help)
     crawl_parser.add_argument("--issues", type=int, default=25, help="Issues shown in the terminal")
     _add_crawl_arguments(crawl_parser)
+    _add_output_arguments(crawl_parser)
 
     serve_parser = subparsers.add_parser("serve-mock", help="Serve a mock site from mock_sites/ on localhost")
     serve_parser.add_argument("site", choices=available_sites())
@@ -304,18 +376,23 @@ def main(argv: Optional[List[str]] = None):
         sys.stdout.reconfigure(errors="replace")  # never crash on a console that cannot encode page text
     configure_logging(_log_level(args), args.log_file)
     configure_terminal(TerminalStyle.detect(unicode=args.unicode, color=False if args.no_color else None))
-    logger.info("Command: %s", args.command or "audit (default)")
+    logger.info("Command: %s%s", args.command or "audit (default)", run_context())
+    status = 0
 
     try:
         if args.command is None:
             run_audit()
         elif args.command == "audit":
-            run_audit(min_score=args.min_score, min_conf=args.min_conf, config_path=args.config, html_dir=args.html,
-                      url=args.url, sitemap=args.sitemap, top=args.top, crawl_overrides=_crawl_overrides(args),
-                      from_crawl=args.from_crawl, save_crawl=args.save_crawl)
+            analysis = run_audit(min_score=args.min_score, min_conf=args.min_conf, config_path=args.config,
+                                 html_dir=args.html, url=args.url, sitemap=args.sitemap, top=args.top,
+                                 crawl_overrides=_crawl_overrides(args), from_crawl=args.from_crawl,
+                                 save_crawl=args.save_crawl, json_path=args.json_path, csv_dir=args.csv_dir)
+            status = _fail_on_status(analysis, args.fail_on)
         elif args.command == "crawl":
-            run_crawl(args.url, config_path=args.config, crawl_overrides=_crawl_overrides(args),
-                      sitemap=args.sitemap, save_crawl=args.save_crawl, limit=args.issues)
+            _, audit = run_crawl(args.url, config_path=args.config, crawl_overrides=_crawl_overrides(args),
+                                 sitemap=args.sitemap, save_crawl=args.save_crawl, limit=args.issues,
+                                 json_path=args.json_path, csv_dir=args.csv_dir)
+            status = _fail_on_status(audit, args.fail_on)
         elif args.command == "boost-page2":
             run_boost_page2(args.min_pos, args.max_pos, args.min_impressions, config_path=args.config)
         elif args.command == "benchmark":
@@ -325,6 +402,8 @@ def main(argv: Optional[List[str]] = None):
     except (FileNotFoundError, ValueError) as exc:
         logger.error("%s", exc)
         sys.exit(2)
+    if status:
+        sys.exit(status)
 
 
 if __name__ == "__main__":
